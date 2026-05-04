@@ -5,6 +5,115 @@ All notable changes to GGEO Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.3] — 2026-05-04
+
+Wizard E2E hardening — tested on Mac + Windows. All 6 menus + new
+[7] Edit network settings work end-to-end without password residue,
+duplicate trays, or zombie server processes.
+
+### Wizard menu — sudo + session ergonomics
+
+- One-shot upfront sudo prompt at wizard open. Banner appears first,
+  then `Admin password required (one-time, cached for this session)`.
+  After password, screen clears and banner re-renders so the prompt
+  residue is wiped. Subsequent menu actions in the same Terminal
+  session inherit the cache (5 min default). New Terminal session
+  re-prompts (per-tty `tty_tickets`, default macOS sudoers).
+- After an action completes, the wizard returns to the main menu
+  instead of exiting. Same Terminal stays open for the whole session.
+  Exceptions: `[6] Uninstall` exits (install folder gone), `--view-log`
+  secondary Terminal bypasses the loop (just tails).
+- `GGeo.command` auto-closes the Mac Terminal window after the wizard
+  exits cleanly (osascript matches the current tty).
+
+### New menu — [7] Edit network settings
+
+- Edit `port` and `mdns_hostname` inline. Press Enter to keep current,
+  or type a new value. Validates port 1-65535; auto-appends `.local`
+  to the mdns name. Saves to `data/client.json`.
+- `config.py` reads the optional `port` / `mdns_hostname` early at
+  import, falling back to `8484` / `ggeo-client.local` if absent.
+  Server picks them up on next `[2] Start server`.
+
+### Server lifecycle (Ctrl+C reliability)
+
+- `ggeo/app.py`: dropped the custom `loop.add_signal_handler` for
+  SIGINT/SIGTERM. It overrode uvicorn's own handler so SIGINT triggered
+  graceful shutdown but never told uvicorn to exit — the process kept
+  accepting requests with a closed agent client (RuntimeError "Cannot
+  send a request, as the client has been closed" minutes later).
+  Uvicorn now handles SIGINT itself; lifespan exit fires the single
+  `_graceful_shutdown` path.
+- `_graceful_shutdown` is now idempotent (early-return on
+  `agent._shutdown_done`) — defensive against double-invocation paths.
+- `uvicorn.run` got `timeout_graceful_shutdown=2` and `log_config=None`
+  so connection drain has a hard ceiling and uvicorn doesn't reset
+  our pre-configured handlers.
+
+### Run banner — clean status line
+
+- All `uvicorn / fastapi / asyncio / httpx / httpcore / h11` loggers
+  redirected to the same `RotatingFileHandler` as `ggeo` and silenced
+  on stderr. The bottom `\r`-status line is no longer overwritten by
+  warning lines from uvicorn.error or HTTP client errors.
+- "Host" URL row removed from the runtime banner — host URL is no
+  longer published in the dashboard. Banner shows Local / Network /
+  Logs only.
+
+### Update from GitHub — privilege handling
+
+- `auto_update.check_and_update()` now prefixes git commands with
+  `sudo -u $SUDO_USER` when running as root, so `git fetch / pull`
+  inside `sudo run.py` keeps `.git/` user-owned. The previous attempt
+  to skip auto-update entirely under root removed the feature; this
+  preserves it without contaminating ownership.
+- `[5] Update from GitHub` runs `sudo -n chown -R $UID $ROOT`
+  unconditionally before the git ops. Earlier we only chowned when
+  the `.git` directory itself was non-user-owned, which missed the
+  common case where contents (`.git/FETCH_HEAD`) were root-owned but
+  the parent dir looked fine.
+- `setup.py _restore_ownership` includes `.git/` and the install root
+  in the chown targets.
+
+### Tray (Mac)
+
+- `tray.py` calls `NSApplication.sharedApplication().setActivationPolicy_(1)`
+  early so pystray's `NSStatusItem` actually renders on Sonoma+.
+  Without this the icon never appears in the menu bar.
+- `tray.py` uses `config.PROJECT_ROOT` for log paths (was hard-coded
+  relative path that broke after the `_internal/` reorg).
+- "Open log window" menu item spawns a separate Terminal/PowerShell
+  with live `tail -f` of the server log.
+
+### Setup wizard — multiple round-2 fixes
+
+- Fixed `SyntaxError` at `setup.py:840` — a misplaced `elif` inside
+  the for-loop that broke `[1] Setup` on every fresh install. Lesson:
+  files in `INTERNAL_FROM_SOURCE` are copied raw, never PyArmor-
+  obfuscated, so they bypass CI's syntax check. Local `python3 -m
+  py_compile` now part of the pre-push routine.
+- AUTO_MODE flag (`GGEO_AUTO_MODE=1`) for unattended re-run from
+  `[5] Update`. Setup reuses Host URL, API key, admin username from
+  existing `client.json`; auto-yes autostart only when an existing
+  plist is detected.
+- `do_save_client_json` signature fix (was missing `username` param
+  after refactor; caller mismatched).
+- `remove_old_autostart` on Mac runs `pkill -9 -f _internal/tray.py`
+  after `launchctl bootout` to kill manually-launched tray instances
+  that the bootout doesn't see — prevents 2 trays appearing in
+  the menu bar after `[5] Update`.
+- macOS desktop shortcut: removed stale `Assets.car` and `applet.rsrc`
+  files left by `osacompile` so Finder picks up the embedded
+  `applet.icns` instead of falling back to the default applet icon.
+- `launchctl bootstrap gui/<uid>` runs from the root context (no
+  `sudo -u` wrapper) — more reliable than the asuser→bootstrap chain.
+
+### Run launch (slow imports)
+
+- `run.py` clears the screen and prints `Starting GGeo Client...`
+  before the heavy imports kick in, so the user sees something
+  immediately instead of a long blank.
+
 ## [2.3.2] — 2026-05-03
 
 Single multi-action launcher + log path fix + tray hybrid.
