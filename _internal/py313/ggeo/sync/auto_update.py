@@ -96,7 +96,7 @@ def check_and_update() -> bool:
         return False
 
     branch = _current_branch()
-    if branch != "main":
+    if branch not in ("main", "HEAD"):
         logger.info("auto-update: branch is %r (not main), skipping", branch)
         return False
 
@@ -127,14 +127,17 @@ def check_and_update() -> bool:
     logger.info("auto-update: %d commit(s) behind, pulling ...", n)
     req_hash_before = _hash_file(REQUIREMENTS)
     rc, out, err = _run(
-        ["pull", "--ff-only", "--quiet", "origin", "main"], timeout=30,
+        ["reset", "--hard", "origin/main"], timeout=30,
     )
     if rc != 0:
         logger.warning(
-            "auto-update: pull failed (%s); continuing with old code",
+            "auto-update: reset failed (%s); continuing with old code",
             err or rc,
         )
         return False
+
+    if branch == "HEAD":
+        _run(["checkout", "-B", "main", "origin/main"], timeout=10)
 
     if _hash_file(REQUIREMENTS) != req_hash_before:
         logger.info(
