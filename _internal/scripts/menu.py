@@ -59,7 +59,7 @@ def detect_default() -> str:
     has_venv = venv_python().exists()
     if not has_config or not has_venv:
         return "1"
-    return "3"
+    return "4"
 
 
 def render_banner(action_title: str = None) -> str:
@@ -149,13 +149,13 @@ def fail_inline(msg=""):
 
 def print_menu(default: str) -> None:
     items = [
-        ("1", "Setup / re-configure"),
-        ("2", "Start server"),
-        ("3", "Start server + open log viewer"),
-        ("4", "View live log only"),
-        ("5", "Update from GitHub"),
-        ("6", "Uninstall"),
-        ("7", "Edit network settings (port + mDNS)"),
+        ("1", "Setup"),
+        ("2", "Network"),
+        ("3", "Start"),
+        ("4", "Start + log"),
+        ("5", "Logs"),
+        ("6", "Update"),
+        ("7", "Uninstall"),
         ("q", "Quit"),
     ]
     print("  Choose an action:\n")
@@ -240,7 +240,7 @@ def quick_auto_update_check() -> None:
         n = int(res.stdout.strip())
         if n == 0:
             return
-        print(f"  {DIM}Auto-update: {n} commit(s) behind, applying...{RST}")
+        print(f"  {DIM}New version available, applying...{RST}")
         res = subprocess.run(
             ["git", "-C", str(ROOT), "reset", "--hard", "origin/main"],
             capture_output=True, timeout=30,
@@ -288,10 +288,10 @@ def action_start_server() -> None:
     clear_screen()
     py = venv_python()
     if not py.exists():
-        print(render_banner("Start Server"))
+        print(render_banner("Start"))
         print()
-        print(f"  {fail_inline()} venv not found")
-        print(f"    {DIM}Run [1] Setup first to install dependencies.{RST}")
+        print(f"  {fail_inline()} Environment not initialised")
+        print(f"    {DIM}Run Setup first.{RST}")
         input("\n  Press Enter to return to menu...")
         return
     quick_auto_update_check()
@@ -330,14 +330,14 @@ def action_start_with_log() -> None:
 
 def action_view_log() -> None:
     clear_screen()
-    print(render_banner("Live Log"))
+    print(render_banner("Logs"))
     log_path = INTERNAL / "data" / "ggeo.log"
     if not log_path.exists():
         print()
-        print(f"  {warn_inline()} Log file not found")
+        print(f"  {warn_inline()} Log file not yet created")
         print(f"    {DIM}{log_path}{RST}")
         print()
-        print(f"  {DIM}Has the server been started yet?{RST}")
+        print(f"  {DIM}Start the server first.{RST}")
         input("\n  Press Enter to return to menu...")
         return
     print()
@@ -356,10 +356,9 @@ def action_view_log() -> None:
 
 def action_update() -> None:
     clear_screen()
-    print(render_banner("Update from GitHub"))
+    print(render_banner("Update"))
     print()
-    print(f"  {DIM}This will fetch latest from GitHub, rebuild venv,{RST}")
-    print(f"  {DIM}and reinstall dependencies.{RST}")
+    print(f"  {DIM}Fetch the latest release and rebuild the environment.{RST}")
     print()
     ans = input("  Continue? [Y/n] ").strip().lower()
     if ans == "n":
@@ -386,7 +385,7 @@ def action_update() -> None:
     )
     if res.returncode != 0:
         err = (res.stderr or res.stdout).strip()[:200]
-        step_print(2, total, "Pulling from GitHub", fail_inline("fetch failed"))
+        step_print(2, total, "Fetching latest", fail_inline("fetch failed"))
         print(f"\n  {DIM}{err}{RST}")
         input("\n  Press Enter to return to menu...")
         return
@@ -396,11 +395,11 @@ def action_update() -> None:
     )
     if res.returncode != 0:
         err = (res.stderr or res.stdout).strip()[:200]
-        step_print(2, total, "Pulling from GitHub", fail_inline("reset failed"))
+        step_print(2, total, "Fetching latest", fail_inline("reset failed"))
         print(f"\n  {DIM}{err}{RST}")
         input("\n  Press Enter to return to menu...")
         return
-    step_print(2, total, "Pulling from GitHub", ok_inline())
+    step_print(2, total, "Fetching latest", ok_inline())
 
     venv_dir = INTERNAL / "venv"
     if platform.system() == "Windows":
@@ -412,10 +411,10 @@ def action_update() -> None:
         capture_output=True, text=True,
     ).returncode
     if rc != 0:
-        step_print(3, total, "Rebuilding venv", fail_inline("venv create"))
+        step_print(3, total, "Rebuilding environment", fail_inline("venv create"))
         input("\n  Press Enter to return to menu...")
         return
-    step_print(3, total, "Rebuilding venv", ok_inline())
+    step_print(3, total, "Rebuilding environment", ok_inline())
 
     py = venv_python()
     subprocess.run([str(py), "-m", "pip", "install", "--upgrade", "pip",
@@ -432,7 +431,7 @@ def action_update() -> None:
     step_print(4, total, "Installing dependencies", ok_inline())
 
     print()
-    print(f"  {DIM}Refreshing shortcut + autostart (running setup auto-mode)...{RST}")
+    print(f"  {DIM}Refreshing shortcut and autostart...{RST}")
     env = os.environ.copy()
     env["GGEO_AUTO_MODE"] = "1"
     setup_py = INTERNAL / "setup.py"
@@ -442,25 +441,25 @@ def action_update() -> None:
         setup_cmd = ["sudo", "-E", sys.executable, str(setup_py)]
     rc = subprocess.run(setup_cmd, env=env).returncode
     if rc != 0:
-        step_print(5, total, "Refreshing shortcut + autostart",
+        step_print(5, total, "Refreshing shortcut",
                    warn_inline(f"setup rc={rc}"))
     else:
-        step_print(5, total, "Refreshing shortcut + autostart", ok_inline())
+        step_print(5, total, "Refreshing shortcut", ok_inline())
 
     new_ver = (ROOT / "VERSION").read_text().strip() if (ROOT / "VERSION").exists() else "?"
-    print(render_closing(f"Update complete (v{new_ver})"))
+    print(render_closing(f"Updated to v{new_ver}"))
     input("\n  Press Enter to return to menu...")
 
 
 def action_edit_network() -> None:
     clear_screen()
-    print(render_banner("Edit Network Settings"))
+    print(render_banner("Network"))
     print()
 
     cfg_path = INTERNAL / "data" / "client.json"
     if not cfg_path.exists():
-        print(f"  {fail_inline()} client.json not found.")
-        print(f"    {DIM}Run [1] Setup first to configure.{RST}")
+        print(f"  {fail_inline()} Configuration not found")
+        print(f"    {DIM}Run Setup first.{RST}")
         input("\n  Press Enter to return to menu...")
         return
 
@@ -526,7 +525,7 @@ def action_edit_network() -> None:
     print()
     print(f"  {ok_inline('Saved.')}")
     print()
-    print(f"  {DIM}Restart server ([2] Start) to apply changes.{RST}")
+    print(f"  {DIM}Restart the server to apply changes.{RST}")
     input("\n  Press Enter to return to menu...")
 
 
@@ -534,11 +533,11 @@ def action_uninstall() -> None:
     clear_screen()
     print(render_banner("Uninstall"))
     print()
-    print(f"  {DIM}This will remove:{RST}")
-    print(f"    {DIM}- Server (running process if any){RST}")
-    print(f"    {DIM}- Autostart entry{RST}")
-    print(f"    {DIM}- Desktop shortcut{RST}")
-    print(f"    {DIM}- Install folder: {ROOT}{RST}")
+    print(f"  {DIM}The following will be removed:{RST}")
+    print(f"    {DIM}• Running server (if any){RST}")
+    print(f"    {DIM}• Autostart entry{RST}")
+    print(f"    {DIM}• Desktop shortcut{RST}")
+    print(f"    {DIM}• Install folder ({ROOT}){RST}")
     print()
     ans = input("  Continue? [y/N] ").strip().lower()
     if ans != "y":
@@ -638,12 +637,12 @@ def main() -> None:
 
     actions = {
         "1": action_setup,
-        "2": action_start_server,
-        "3": action_start_with_log,
-        "4": action_view_log,
-        "5": action_update,
-        "6": action_uninstall,
-        "7": action_edit_network,
+        "2": action_edit_network,
+        "3": action_start_server,
+        "4": action_start_with_log,
+        "5": action_view_log,
+        "6": action_update,
+        "7": action_uninstall,
     }
 
     while True:

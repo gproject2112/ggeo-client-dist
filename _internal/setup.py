@@ -551,27 +551,25 @@ def remove_paths(paths: list[Path]) -> int:
 
 def create_macos_shortcut() -> tuple[bool, str]:
     SCRIPTS_DIR.mkdir(exist_ok=True)
-    helper = SCRIPTS_DIR / "ggeo-launcher.sh"
-    py = venv_python()
-    helper.write_text(
-        "#!/bin/bash\n"
-        f'cd "{ROOT}" || exit 1\n\n'
-        "B=$'\\033[1m'; C=$'\\033[96m'; D=$'\\033[2m'; R=$'\\033[0m'\n"
-        f'URL="http://ggeo-client.local:{DEFAULT_PORT}/"\n\n'
-        f"if lsof -iTCP:{DEFAULT_PORT} -sTCP:LISTEN >/dev/null 2>&1; then\n"
-        '    open "${URL}"; exit 0\n'
-        "fi\n\n"
-        '( sleep 4 && open "${URL}" ) &\n'
-        f'sudo "{py}" run.py\n'
-        'EXIT_CODE=$?\n'
-        'read -n 1 -s -r -p "  Press any key to close..."\n'
-        'printf "\\n"\n'
-    )
-    helper.chmod(0o755)
+    wizard_launcher = ROOT.parent / "GGeo.command"
+    if wizard_launcher.exists():
+        target_script = str(wizard_launcher)
+    else:
+        helper = SCRIPTS_DIR / "ggeo-launcher.sh"
+        py = venv_python()
+        helper.write_text(
+            "#!/bin/bash\n"
+            f'cd "{ROOT}" || exit 1\n\n'
+            f'sudo "{py}" run.py\n'
+            'read -n 1 -s -r -p "  Press any key to close..."\n'
+            'printf "\\n"\n'
+        )
+        helper.chmod(0o755)
+        target_script = str(helper)
 
     applescript = (
         "on run\n"
-        f'    set launcherScript to "{helper}"\n'
+        f'    set launcherScript to "{target_script}"\n'
         '    tell application "Terminal"\n'
         "        activate\n"
         '        do script "clear && exec " & quoted form of launcherScript\n'
@@ -641,19 +639,21 @@ def create_macos_shortcut() -> tuple[bool, str]:
 
 def create_windows_shortcut() -> tuple[bool, str]:
     SCRIPTS_DIR.mkdir(exist_ok=True)
-    bat_path = SCRIPTS_DIR / "ggeo-launcher.bat"
     icon_path = ROOT / "ggeo" / "static" / "favicon.ico"
-    bat_path.write_text(
-        "@echo off\n"
-        "setlocal\n"
-        'cd /d "%~dp0.."\n'
-        f"title {SHORTCUT_LABEL}\n"
-        "cls\n"
-        'start "" /B cmd /C "timeout /t 4 /nobreak >nul && '
-        f'start http://ggeo-client.local:{DEFAULT_PORT}/"\n'
-        "venv\\Scripts\\python.exe run.py\n"
-        "pause\n"
-    )
+    wizard_launcher = ROOT.parent / "GGeo.bat"
+    if wizard_launcher.exists():
+        bat_path = wizard_launcher
+    else:
+        bat_path = SCRIPTS_DIR / "ggeo-launcher.bat"
+        bat_path.write_text(
+            "@echo off\n"
+            "setlocal\n"
+            'cd /d "%~dp0.."\n'
+            f"title {SHORTCUT_LABEL}\n"
+            "cls\n"
+            "venv\\Scripts\\python.exe run.py\n"
+            "pause\n"
+        )
 
     desktop = get_windows_desktop()
     if not desktop.is_dir():
@@ -680,7 +680,7 @@ def create_windows_shortcut() -> tuple[bool, str]:
                 pythoncom.CLSCTX_INPROC_SERVER, shell.IID_IShellLink,
             )
             link.SetPath(str(bat_path))
-            link.SetWorkingDirectory(str(ROOT))
+            link.SetWorkingDirectory(str(bat_path.parent))
             if icon_path.exists():
                 link.SetIconLocation(str(icon_path), 0)
             link.SetDescription(SHORTCUT_LABEL)
@@ -704,7 +704,7 @@ def create_windows_shortcut() -> tuple[bool, str]:
         'Set WshShell = CreateObject("WScript.Shell")\n'
         f'Set oShortcut = WshShell.CreateShortcut("{lnk_path}")\n'
         f'oShortcut.TargetPath = "{bat_path}"\n'
-        f'oShortcut.WorkingDirectory = "{ROOT}"\n'
+        f'oShortcut.WorkingDirectory = "{bat_path.parent}"\n'
         f'oShortcut.IconLocation = "{icon_path}"\n'
         f'oShortcut.Description = "{SHORTCUT_LABEL}"\n'
         'oShortcut.Save\n'
