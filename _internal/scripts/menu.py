@@ -608,7 +608,10 @@ def main() -> None:
             time.sleep(1)
             continue
 
-        fn()
+        try:
+            fn()
+        except KeyboardInterrupt:
+            print()
 
         if choice == "6":
             return
