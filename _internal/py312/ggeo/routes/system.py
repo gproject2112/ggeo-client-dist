@@ -116,7 +116,7 @@ async def system_health(request: Request):
             _check_sc_query("Bonjour Service"),
         )
         rows = [
-            {"key": "amds", "label": "Apple Mobile Device Service",
+            {"key": "amds", "label": "Apple Mobile Device",
              "status": amds_status},
             {"key": "bonjour", "label": "Bonjour Service",
              "status": bonjour_status},
