@@ -236,12 +236,10 @@ def action_start_server() -> None:
         input("\n  Press Enter to return to menu...")
         return
     run_py = INTERNAL / "run.py"
-    env = os.environ.copy()
-    env["GGEO_NO_AUTOUPDATE"] = "1"
     if platform.system() == "Windows":
-        rc = subprocess.call([str(py), str(run_py)], env=env)
+        rc = subprocess.call([str(py), str(run_py)])
     else:
-        rc = subprocess.call(["sudo", "-E", str(py), str(run_py)], env=env)
+        rc = subprocess.call(["sudo", "-E", str(py), str(run_py)])
     print()
     print(f"  {DIM}Server stopped (exit {rc}).{RST}")
     input("\n  Press Enter to return to menu...")
