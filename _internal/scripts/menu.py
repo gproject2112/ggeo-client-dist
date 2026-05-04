@@ -213,6 +213,65 @@ def kill_port_8484() -> None:
         time.sleep(0.3)
 
 
+def quick_auto_update_check() -> None:
+    if not (ROOT / ".git").is_dir():
+        return
+    if not shutil.which("git"):
+        return
+    try:
+        if platform.system() != "Windows":
+            subprocess.run(
+                ["sudo", "-n", "chown", "-R",
+                 f"{os.getuid()}:{os.getgid()}", str(ROOT)],
+                capture_output=True,
+            )
+        res = subprocess.run(
+            ["git", "-C", str(ROOT), "fetch", "--quiet", "origin", "main"],
+            capture_output=True, timeout=15,
+        )
+        if res.returncode != 0:
+            return
+        res = subprocess.run(
+            ["git", "-C", str(ROOT), "rev-list", "--count", "HEAD..origin/main"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if res.returncode != 0 or not res.stdout.strip().isdigit():
+            return
+        n = int(res.stdout.strip())
+        if n == 0:
+            return
+        print(f"  {DIM}Auto-update: {n} commit(s) behind, applying...{RST}")
+        res = subprocess.run(
+            ["git", "-C", str(ROOT), "reset", "--hard", "origin/main"],
+            capture_output=True, timeout=30,
+        )
+        if res.returncode != 0:
+            return
+        branch = subprocess.run(
+            ["git", "-C", str(ROOT), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if branch.returncode == 0 and branch.stdout.strip() == "HEAD":
+            subprocess.run(
+                ["git", "-C", str(ROOT), "checkout", "-B", "main", "origin/main"],
+                capture_output=True, timeout=10,
+            )
+        py = venv_python()
+        req = INTERNAL / "requirements.txt"
+        if py.exists() and req.exists():
+            subprocess.run(
+                [str(py), "-m", "pip", "install", "--quiet", "-r", str(req)],
+                capture_output=True, timeout=600,
+            )
+        try:
+            new_ver = (ROOT / "VERSION").read_text().strip()
+            print(f"  {ok_inline()} Updated to v{new_ver}")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def action_setup() -> None:
     clear_screen()
     setup_py = INTERNAL / "setup.py"
@@ -235,6 +294,8 @@ def action_start_server() -> None:
         print(f"    {DIM}Run [1] Setup first to install dependencies.{RST}")
         input("\n  Press Enter to return to menu...")
         return
+    quick_auto_update_check()
+    py = venv_python()
     run_py = INTERNAL / "run.py"
     if platform.system() == "Windows":
         rc = subprocess.call([str(py), str(run_py)])
