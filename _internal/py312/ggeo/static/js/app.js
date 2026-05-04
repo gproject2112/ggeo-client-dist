@@ -139,7 +139,13 @@ var App = {
         var res = await fetch(path, opts);
         var json = await res.json();
         if (json.status !== "ok") {
-            throw new Error(json.message || json.error || json.detail || "Request failed");
+            var err = new Error(json.message || json.error || json.detail || "Request failed");
+            err.error = json.error;
+            err.detail = json.detail;
+            err.active_by_username = json.active_by_username;
+            err.active_by_user_id = json.active_by_user_id;
+            err.status_code = res.status;
+            throw err;
         }
         return json.data;
     },

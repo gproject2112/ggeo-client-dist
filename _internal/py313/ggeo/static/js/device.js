@@ -228,6 +228,48 @@ var Device = {
             .catch(function() {});
     },
 
+    loadCached: async function() {
+        var self = this;
+        try {
+            var data = await App.api("GET", "/api/device/cached");
+            self.devices = (data || []).map(function(d) {
+                return {
+                    udid: d.udid,
+                    name: d.name,
+                    model: d.model,
+                    ios_version: d.ios_version,
+                    ip: d.ip,
+                    connection: d.connection,
+                    wifi_connections_enabled: d.wifi_connections_enabled,
+                    active: d.active,
+                    bonjour_silent: false,
+                    from_cache: true,
+                };
+            });
+            (data || []).forEach(function(d) {
+                if (d.session) self._lastSessions[d.udid] = d.session;
+            });
+            self.renderDeviceList(self.devices);
+            self._cachedLoaded = true;
+            return self.devices;
+        } catch (e) {
+            self._cachedLoaded = false;
+            return [];
+        }
+    },
+
+    shouldSkipScan: function() {
+        var self = this;
+        if (!self._cachedLoaded) return false;
+        var u = window.currentUser;
+        if (!u) return false;
+        if (u.role === "client_admin") return false;
+        var assigned = u.device_udids || (u.device_udid ? [u.device_udid] : []);
+        if (assigned.length !== 1) return false;
+        var sess = (self._lastSessions || {})[assigned[0]];
+        return !!(sess && (sess.is_active || sess.connection_status === "active"));
+    },
+
     scan: async function() {
         var self = this;
         if (self._scanning) return;
@@ -245,19 +287,18 @@ var Device = {
         if (rescan) rescan.classList.add("spin");
         if (scanSpin) scanSpin.style.display = "inline-block";
         if (scanHead) scanHead.textContent = self._t("scanning_devices", "Scanning…");
-        if (scanEmpty) scanEmpty.style.display = "flex";
+        if (scanEmpty) scanEmpty.style.display = (self.devices && self.devices.length) ? "none" : "flex";
         if (scanResult) scanResult.style.display = "none";
         if (scanProgress) scanProgress.style.display = "block";
         if (scanBar) scanBar.style.width = "0%";
-        var progress = 0;
-        var progressIv = setInterval(function() {
-            progress += Math.random() * 14 + 6;
-            if (progress > 88) progress = 88;
-            if (scanBar) scanBar.style.width = progress + "%";
-        }, 200);
-        self._scanProgressIv = progressIv;
         var scanStartedAt = Date.now();
-        var MIN_SCAN_MS = 1100;
+        var progressIv = setInterval(function() {
+            var elapsed = Date.now() - scanStartedAt;
+            var pct = Math.min(90, 90 * (1 - Math.exp(-elapsed / 5000)));
+            if (scanBar) scanBar.style.width = pct + "%";
+        }, 100);
+        self._scanProgressIv = progressIv;
+        var MIN_SCAN_MS = 600;
 
         try {
             var data = await App.api("GET", "/api/device/scan");
@@ -437,20 +478,40 @@ var Device = {
             if (idleNoCoord) togCls += " no-coord";
             var isBusy = isConnecting || isDeact || isReconn;
             var togDisabled = (isConnecting || isDeact) ? " disabled" : "";
+
+            var ownerId = session && session.activated_by_user_id;
+            var ownerName = session && session.activated_by_username;
+            var u = window.currentUser;
+            var ownedByOther = false;
+            if (ownerId && u && ownerId !== u.user_id && u.role !== "client_admin") {
+                ownedByOther = true;
+                togCls += " owned-other";
+                togDisabled = " disabled";
+            }
+
             var togBusy = isBusy ? ' data-busy="true"' : "";
             var togTitle = "";
-            if (isConnecting) togTitle = self._t("status_connecting", "Connecting…");
+            if (ownedByOther) togTitle = self._t("device_in_use_by", "In use by ") + (ownerName || "another user");
+            else if (isConnecting) togTitle = self._t("status_connecting", "Connecting…");
             else if (isDeact) togTitle = self._t("status_deactivating", "Stopping…");
             else if (isReconn) togTitle = self._t("status_reconnecting", "Reconnecting…");
             else if (idleNoCoord) togTitle = self._t("pick_location_first_short", "Pick a location first");
 
+            var attribBadge = "";
+            if (ownedByOther) {
+                attribBadge = '<span class="dev-badge attrib" title="'
+                    + escapeHtml(ownerName || "")
+                    + '">' + escapeHtml((self._t("by_label", "by ")) + (ownerName || "")) + '</span>';
+            }
+
             var displayName = self._displayDeviceName(d);
             var displayModel = self._displayDeviceModel(d);
-            html += '<div class="' + cls + '" data-udid="' + d.udid + '" onclick="Device.selectDevice(\'' + d.udid + '\')">'
+            html += '<div class="' + cls + (ownedByOther ? " owned-other" : "") + '" data-udid="' + d.udid + '" onclick="Device.selectDevice(\'' + d.udid + '\')">'
                 + '<div class="dev-head">'
                   + '<span class="' + dotCls + '"></span>'
                   + '<span class="dev-name" title="' + escapeHtml(displayName) + '">' + escapeHtml(displayName) + '</span>'
                   + '<span class="dev-badge">' + conn + '</span>'
+                  + attribBadge
                   + '<button class="' + togCls + '" data-tgl' + togDisabled + togBusy
                     + (togTitle ? ' title="' + togTitle + '" aria-label="' + togTitle + '"' : '')
                     + ' onclick="event.stopPropagation();Device.toggleFromCard(\'' + d.udid + '\')"></button>'
@@ -684,6 +745,12 @@ var Device = {
         try {
             await doActivate();
         } catch (e) {
+            if (e && e.error === "DEVICE_IN_USE") {
+                self._rollbackOptimistic(udid, snapshot);
+                var by = e.active_by_username || self._t("another_user", "another user");
+                App.toast(self._t("err_device_in_use", "Device in use by ") + by, true);
+                return;
+            }
             if (/already.?active/i.test(e.message)) {
                 try {
                     await App.api("POST", "/api/device/deactivate", {udid: udid});
@@ -754,15 +821,15 @@ var Device = {
             var s = sessionMap[udid];
             if (!s) return;
             if (self._isUdidActive(s) || self._isUdidReconnecting(s)) {
-                App.api("POST", "/api/device/deactivate", {udid: udid}).catch(function(){});
-                delete sessionMap[udid];
-                self._clearActivationDuration(udid);
-                if (self._selectedUdid === udid) {
-                    self._selectedUdid = null;
-                    self._selectedName = null;
-                    var br = document.getElementById("bottomRow");
-                    if (br) br.style.display = "none";
-                }
+                return;
+            }
+            delete sessionMap[udid];
+            self._clearActivationDuration(udid);
+            if (self._selectedUdid === udid) {
+                self._selectedUdid = null;
+                self._selectedName = null;
+                var br = document.getElementById("bottomRow");
+                if (br) br.style.display = "none";
             }
         });
     },

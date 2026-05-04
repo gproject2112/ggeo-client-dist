@@ -57,6 +57,8 @@ class DeviceSession:
         self._disconnect_started_at = None
         self._gave_up = False
         self._store = None
+        self.activated_by_user_id: str | None = None
+        self.activated_by_username: str | None = None
 
     def to_dict(self) -> dict:
         spoof_elapsed = None
@@ -80,6 +82,8 @@ class DeviceSession:
             "retry_count": self._retry_count,
             "disconnect_started_at": self._disconnect_started_at,
             "wifi_unreachable": getattr(self, "_wifi_unreachable", False),
+            "activated_by_user_id": self.activated_by_user_id,
+            "activated_by_username": self.activated_by_username,
         }
 
 
@@ -155,6 +159,8 @@ class DeviceManager:
                 devices = []
             by_udid = {}
             for dev in devices:
+                if scope_udids is not None and dev.serial not in scope_udids:
+                    continue
                 ct = getattr(dev, "connection_type", "USB")
                 existing = by_udid.get(dev.serial)
                 if not existing or (ct == "USB" and existing["connection"] != "USB"):
@@ -229,6 +235,8 @@ class DeviceManager:
 
             found_udids = {r["udid"] for r in result}
             await self._bonjour_discover(result, found_udids)
+            if scope_udids is not None:
+                result = [r for r in result if r["udid"] in scope_udids]
 
             for r in result:
                 self._device_names.setdefault(r["udid"], r["name"])
@@ -420,7 +428,9 @@ class DeviceManager:
     def get_device_name(self, udid: str) -> str:
         return self._device_names.get(udid, udid[:12])
 
-    async def activate(self, udid: str, lat: float, lon: float) -> DeviceSession:
+    async def activate(self, udid: str, lat: float, lon: float,
+                       activated_by_user_id: str | None = None,
+                       activated_by_username: str | None = None) -> DeviceSession:
         """Start GPS simulation on a device. Returns the session."""
         if udid in self.sessions:
             existing = self.sessions[udid]
@@ -454,6 +464,8 @@ class DeviceManager:
         session = DeviceSession(udid, name=name, lat=lat, lon=lon,
                                 connection_type=connection_type, ip=ip)
         session._store = self._store
+        session.activated_by_user_id = activated_by_user_id
+        session.activated_by_username = activated_by_username
         self.sessions[udid] = session
         session._simulation_task = asyncio.create_task(run_device_session(session))
         logger.info("[%s] Session started at %.6f, %.6f via %s",

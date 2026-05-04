@@ -600,8 +600,11 @@
                 });
 
                 Device._scanToastEnabled = false;
-                Device.scan();
                 Device.initSSE();
+                await Device.loadCached();
+                if (!Device.shouldSkipScan()) {
+                    Device.scan();
+                }
                 updatePickerActive();
                 updateSavePresetBtn();
             } catch (e) {
