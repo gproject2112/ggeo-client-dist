@@ -633,6 +633,7 @@
             if (diff < 60) return label + ": " + I18N.t("just_now", "just now");
             if (diff < 3600) return label + ": " + Math.floor(diff / 60) + I18N.t("min_ago_short", "m ago");
             if (diff < 86400) return label + ": " + Math.floor(diff / 3600) + I18N.t("hour_ago_short", "h ago");
+            if (diff < 604800) return label + ": " + Math.floor(diff / 86400) + I18N.t("day_ago_short", "d ago");
             var d = new Date(ts * 1000);
             var pad = function(n){ return n < 10 ? "0" + n : "" + n; };
             return label + ": " + d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate())

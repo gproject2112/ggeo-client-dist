@@ -1,4 +1,4 @@
-// GGEO Admin Panel — SPA logic for 7 tabs.
+// GGEO Admin Panel — SPA
 
 var Admin = {
     currentTab: "dashboard",
@@ -57,16 +57,11 @@ var Admin = {
         } catch (_) {}
 
         Admin.Health.start();
-        // Limits.refresh is slow (host-status remote roundtrip) — fire and forget.
-        // When it resolves, re-render rail badges with N/MAX format.
         Admin.Limits.refresh().then(function(){
             if (Admin.users && Admin.users.length) Admin.Limits.update("users", Admin.users.length);
             if (Admin.devices && Admin.devices.length) Admin.Limits.update("devices", Admin.devices.length);
             if (Admin.locations && Admin.locations.length) Admin.Limits.update("locations", Admin.locations.length);
         });
-        // NOTE: Do NOT preload counts here — each preload is a forward to host.
-        // Lazy: rail badges show "--/MAX" until user opens that tab.
-        // Avoids burst of 3-5 parallel forwards on page load that overload Render free tier.
         this.switchTab("users");
     },
 
@@ -75,7 +70,6 @@ var Admin = {
         document.querySelectorAll(".rail-item").forEach(function(btn) {
             btn.classList.toggle("active", btn.dataset.tab === tabName);
         });
-        // Mobile bottom-nav active state sync
         document.querySelectorAll(".mobile-admin-nav button").forEach(function(btn) {
             btn.classList.toggle("active", btn.dataset.mobTab === tabName);
         });
@@ -287,23 +281,29 @@ var Admin = {
     fmtTs: function(ts) {
         return App.formatDateTime(ts);
     },
+    _monthName: function(idx) {
+        var keys = ["month_jan","month_feb","month_mar","month_apr","month_may",
+                    "month_jun","month_jul","month_aug","month_sep","month_oct",
+                    "month_nov","month_dec"];
+        var fallback = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        return Admin._t(keys[idx], fallback[idx]);
+    },
+
     fmtRelative: function(ts) {
         if (ts == null) return "—";
         var d = (typeof ts === "number") ? new Date(ts * 1000) : new Date(ts);
         if (isNaN(d.getTime())) return "—";
         var diff = Math.floor((Date.now() - d.getTime()) / 1000);
         if (diff < 0) diff = 0;
-        if (diff < 30) return "Just now";
-        if (diff < 60) return diff + "s ago";
-        if (diff < 3600) return Math.floor(diff / 60) + "m ago";
-        if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
-        if (diff < 172800) return "Yesterday";
-        if (diff < 604800) return Math.floor(diff / 86400) + "d ago";
-        var month = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-        return d.getDate() + " " + month[d.getMonth()];
+        if (diff < 30) return Admin._t("just_now", "just now");
+        if (diff < 60) return diff + Admin._t("sec_ago_short", "s ago");
+        if (diff < 3600) return Math.floor(diff / 60) + Admin._t("min_ago_short", "m ago");
+        if (diff < 86400) return Math.floor(diff / 3600) + Admin._t("hour_ago_short", "h ago");
+        if (diff < 172800) return Admin._t("yesterday_short", "Yesterday");
+        if (diff < 604800) return Math.floor(diff / 86400) + Admin._t("day_ago_short", "d ago");
+        return d.getDate() + " " + Admin._monthName(d.getMonth());
     },
 
-    // "Today HH:MM" / "Yesterday HH:MM" / "DD Mon HH:MM" — friendlier than absolute timestamp
     fmtFriendlyTime: function(ts) {
         if (ts == null) return "—";
         var d = (typeof ts === "number") ? new Date(ts * 1000) : new Date(ts);
@@ -315,14 +315,12 @@ var Admin = {
         var startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         var startOfDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
         var dayDiff = Math.round((startOfToday - startOfDate) / 86400000);
-        if (dayDiff === 0) return "Today " + time;
-        if (dayDiff === 1) return "Yesterday " + time;
-        if (dayDiff < 7) return dayDiff + "d ago " + time;
-        var month = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-        return d.getDate() + " " + month[d.getMonth()] + " " + time;
+        if (dayDiff === 0) return Admin._t("today_short", "Today") + " " + time;
+        if (dayDiff === 1) return Admin._t("yesterday_short", "Yesterday") + " " + time;
+        if (dayDiff < 7) return dayDiff + Admin._t("day_ago_short", "d ago") + " " + time;
+        return d.getDate() + " " + Admin._monthName(d.getMonth()) + " " + time;
     },
 
-    // Format duration as HH:MM:SS for consistency
     fmtDurationHMS: function(sec) {
         if (sec == null || isNaN(sec)) return "—";
         sec = Math.max(0, Math.floor(sec));
@@ -386,18 +384,36 @@ Admin.Health = {
         }
     },
 
-    _setRow: function(probe, status, label) {
-        var rows = document.querySelectorAll('.health-row[data-probe="' + probe + '"] .r');
-        if (!rows.length) return;
-        var dotCls = "neutral";
-        var rCls = "idle";
-        if (status === "ok") { dotCls = "on"; rCls = "ok"; }
-        else if (status === "slow" || status === "warn") { dotCls = "warm"; rCls = "warn"; }
-        else if (status === "error" || status === "down") { dotCls = "off"; rCls = "error"; }
-        var html = '<span class="dot ' + dotCls + '"></span>' + (label || status || "--").toUpperCase();
-        rows.forEach(function(row) {
-            row.className = "r " + rCls;
-            row.innerHTML = html;
+    _statusClasses: function(status) {
+        if (status === "ok") return {dot: "on", r: "ok"};
+        if (status === "slow" || status === "warn") return {dot: "warm", r: "warn"};
+        if (status === "error" || status === "down") return {dot: "off", r: "error"};
+        return {dot: "neutral", r: "idle"};
+    },
+
+    _renderRows: function(rows) {
+        var containers = document.querySelectorAll("#healthMenu, #systemHealth");
+        containers.forEach(function(container) {
+            var rowTag = container.id === "healthMenu" ? "span" : "div";
+            var lastPush = container.querySelector(".health-last-push");
+            container.querySelectorAll(".health-row").forEach(function(el) { el.remove(); });
+            rows.forEach(function(row) {
+                var rowEl = document.createElement(rowTag);
+                rowEl.className = "health-row";
+                rowEl.dataset.probe = row.key;
+                var labelEl = document.createElement("span");
+                labelEl.style.cssText = "color:var(--fg-dim);font-size:11.5px";
+                labelEl.textContent = row.label || row.key;
+                rowEl.appendChild(labelEl);
+                var cls = Admin.Health._statusClasses(row.status);
+                var rEl = document.createElement("span");
+                rEl.className = "r " + cls.r;
+                rEl.innerHTML = '<span class="dot ' + cls.dot + '"></span>' +
+                                (row.status || "--").toUpperCase();
+                rowEl.appendChild(rEl);
+                if (lastPush) container.insertBefore(rowEl, lastPush);
+                else container.appendChild(rowEl);
+            });
         });
         Admin.Health._updateAggregateDot();
     },
@@ -417,10 +433,10 @@ Admin.Health = {
 
     _fmtHeartbeatAgo: function(sec) {
         var s = Math.floor(sec);
-        if (s < 60) return s + "s ago";
-        if (s < 3600) return Math.floor(s / 60) + "m ago";
-        if (s < 86400) return Math.floor(s / 3600) + "h ago";
-        return Math.floor(s / 86400) + "d ago";
+        if (s < 60) return s + Admin._t("sec_ago_short", "s ago");
+        if (s < 3600) return Math.floor(s / 60) + Admin._t("min_ago_short", "m ago");
+        if (s < 86400) return Math.floor(s / 3600) + Admin._t("hour_ago_short", "h ago");
+        return Math.floor(s / 86400) + Admin._t("day_ago_short", "d ago");
     },
 
     render: function(d) {
@@ -431,24 +447,17 @@ Admin.Health = {
         var setLastPush = function(text) {
             lpEls.forEach(function(el) { el.textContent = text; });
         };
-        if (!d || !d.rows) {
-            ["usbmuxd","mdns","host_sync","tunnel"].forEach(function(p) {
-                Admin.Health._setRow(p, "idle", "--");
-            });
-            setLastPush(hbLabel + " —");
-            Admin.Health._updateAggregateDot();
-            return;
-        }
-        d.rows.forEach(function(row) {
-            Admin.Health._setRow(row.key, row.status, row.status);
-        });
-        var hb = d.last_heartbeat_ago_seconds;
+        var rows = (d && d.rows) ? d.rows : [
+            {key: "host_sync", label: "Host sync", status: "idle"},
+            {key: "tunnel", label: "Tunnel", status: "idle"},
+        ];
+        Admin.Health._renderRows(rows);
+        var hb = d ? d.last_heartbeat_ago_seconds : null;
         if (hb != null && !isNaN(hb)) {
             setLastPush(hbLabel + " " + Admin.Health._fmtHeartbeatAgo(hb));
         } else {
             setLastPush(hbLabel + " —");
         }
-        Admin.Health._updateAggregateDot();
     },
 };
 
@@ -511,7 +520,10 @@ Admin.Users = {
                     : '<span class="pill">User</span>';
                 var permClass = perm === "locked" ? "warm" : "mute";
                 var permColor = perm === "locked" ? "var(--warm)" : "var(--fg-dim)";
-                var permHtml = '<span class="mono" style="color:' + permColor + ';font-size:11px;letter-spacing:.05em;text-transform:uppercase">' + perm + '</span>';
+                var permLabel = perm === "locked"
+                    ? Admin._t("perm_locked", "LOCKED")
+                    : Admin._t("perm_free", "FREE");
+                var permHtml = '<span class="mono" style="color:' + permColor + ';font-size:11px;letter-spacing:.05em;text-transform:uppercase">' + permLabel + '</span>';
                 var deviceHtml;
                 if (u.device_udid) {
                     var dvName = u.device_name;
@@ -991,8 +1003,8 @@ Admin.Devices = {
             var editLabel = Admin._t("edit", "Edit");
             pageDevices.forEach(function(d) {
                 var statusPill = d.is_active
-                    ? '<span class="pill accent"><span class="dot on"></span>ACTIVE</span>'
-                    : '<span class="pill"><span class="dot off"></span>IDLE</span>';
+                    ? '<span class="pill accent"><span class="dot on"></span>' + Admin._t("pill_active", "ACTIVE") + '</span>'
+                    : '<span class="pill"><span class="dot off"></span>' + Admin._t("pill_idle", "IDLE") + '</span>';
                 var wifiFlag = d.wifi_enabled === true || d.wifi_connections_enabled === true;
                 var connPill = d.is_active
                     ? (wifiFlag
@@ -1435,7 +1447,6 @@ Admin.Locations = {
                 Admin.Locations._mapInstance.fitBounds(bounds, {padding: [30, 30], maxZoom: 12});
             }
         };
-        // Ensure layout is computed before initializing Leaflet
         requestAnimationFrame(function() {
             requestAnimationFrame(doRender);
         });
@@ -1668,7 +1679,6 @@ Admin.Activity = {
     _userId: "",
 
     init: async function() {
-        // PERF: use Admin.users cache instead of refetch (avoid duplicate forward).
         var users = (Admin.users && Admin.users.length)
             ? Admin.users
             : await App.api("GET", "/api/admin/users").catch(function(){return [];});
@@ -1904,14 +1914,14 @@ Admin.Sessions = {
         var t = (typeof timestamp === "number") ? timestamp : Date.parse(timestamp) / 1000;
         if (isNaN(t)) return "—";
         var sec = Math.max(0, Math.floor(Date.now() / 1000 - t));
-        if (sec < 60) return sec + "s ago";
-        if (sec < 3600) return Math.floor(sec / 60) + "m ago";
+        if (sec < 60) return sec + Admin._t("sec_ago_short", "s ago");
+        if (sec < 3600) return Math.floor(sec / 60) + Admin._t("min_ago_short", "m ago");
         if (sec < 86400) {
             var h = Math.floor(sec / 3600);
             var m = Math.floor((sec % 3600) / 60);
-            return h + "h " + m + "m ago";
+            return h + "h " + m + Admin._t("min_ago_short", "m ago");
         }
-        return Math.floor(sec / 86400) + "d ago";
+        return Math.floor(sec / 86400) + Admin._t("day_ago_short", "d ago");
     },
 
     load: async function() {
@@ -1952,8 +1962,6 @@ Admin.Sessions = {
         }
         var pg = Admin._paginate(sessions, Admin.Sessions._activePage || 1);
         Admin.Sessions._activePage = pg.page;
-
-        // Lookup tables for username + connection (data not in /api/admin/sessions response)
         var userByDevice = {};
         (Admin.users || []).forEach(function(u) {
             if (u.device_udid) {
@@ -2031,7 +2039,6 @@ Admin.Sessions = {
 
     _fmtElapsed: function(timestamp) {
         if (timestamp == null) return "—";
-        // Accept Unix epoch seconds (number) or ISO string
         var t = (typeof timestamp === "number") ? timestamp : Date.parse(timestamp) / 1000;
         if (isNaN(t)) return "—";
         var sec = Math.max(0, Math.floor(Date.now() / 1000 - t));
@@ -2277,7 +2284,7 @@ Admin.Sessions = {
 
 // ── System ──────────────────────────────────────────────────────
 
-// ── History (unified Session + Login sub-tabs) ─────────────────
+// ── History  ─────────────────
 
 Admin.History = {
     _sub: "active",
@@ -2428,11 +2435,6 @@ Admin.History = {
                     ? '<span class="mono" style="color:var(--accent)">' + Admin.fmtDurationHMS(r.duration_seconds) + '</span>'
                     : '<span class="mono" style="color:var(--fg-mute)">—</span>';
                 var reason = (r.end_reason || "—").toUpperCase();
-                // Map backend end_reason values to mockup-style label + pill color
-                // USER (manual user-stop) → MANUAL plain pill
-                // SERVER_STOP / DISCONNECT / ERROR / NETWORK → DISCONNECT danger pill
-                // TIMEOUT / IDLE → TIMEOUT warm pill
-                // ADMIN (force) → MANUAL plain
                 var reasonLabel = reason;
                 var reasonClass = "pill";
                 if (/^(USER|ADMIN|MANUAL)$/i.test(reason)) {
