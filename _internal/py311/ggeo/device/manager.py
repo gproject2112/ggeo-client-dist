@@ -1,19 +1,25 @@
 """Device manager — discovery, session tracking, DeviceSession class."""
 
 import asyncio
+import json
 import logging
+import os
 import sys
+import tempfile
 import time
+from pathlib import Path
 
 from pymobiledevice3.usbmux import list_devices
 from pymobiledevice3.lockdown import create_using_usbmux
 
-from ggeo.config import MAX_DEVICES, TESTED_MAX_IOS
+from ggeo.config import MAX_DEVICES, PROJECT_ROOT, TESTED_MAX_IOS
 from ggeo.device.tunnel import run_device_session
 
 logger = logging.getLogger("ggeo.manager")
 
 BONJOUR_CACHE_TTL = 10.0
+DEVICE_IPS_FILE = PROJECT_ROOT / "data" / "device_ips.json"
+DEVICE_IPS_TTL = 24 * 3600
 
 
 def _version_tuple(v: str) -> tuple:
@@ -103,6 +109,68 @@ class DeviceManager:
         self._registered_fetcher = None
         self._registered_cache: list | None = None
         self._registered_cache_at: float = 0.0
+        self._device_ips_meta: dict[str, dict] = {}
+        self._last_missing: list[dict] = []
+        self._bonjour_broken: bool = False
+        self._load_device_ips()
+
+    def _load_device_ips(self) -> None:
+        try:
+            if not DEVICE_IPS_FILE.exists():
+                return
+            data = json.loads(DEVICE_IPS_FILE.read_text())
+            now = time.time()
+            for udid, entry in (data or {}).items():
+                if not isinstance(entry, dict):
+                    continue
+                ip = entry.get("ip")
+                last_seen = entry.get("last_seen", 0)
+                if not ip or (now - last_seen) > DEVICE_IPS_TTL:
+                    continue
+                self._device_ips[udid] = ip
+                self._device_ips_meta[udid] = entry
+            if self._device_ips:
+                logger.info(
+                    "Loaded %d cached device IP(s) from %s",
+                    len(self._device_ips), DEVICE_IPS_FILE.name,
+                )
+        except Exception as exc:
+            logger.warning("Failed to load device_ips cache: %s", exc)
+
+    def _record_device_ip(self, udid: str, ip: str, source: str = "bonjour",
+                          persist: bool = True) -> None:
+        if not udid or not ip:
+            return
+        self._device_ips[udid] = ip
+        self._device_ips_meta[udid] = {
+            "ip": ip,
+            "last_seen": time.time(),
+            "source": source,
+        }
+        if persist:
+            self._save_device_ips()
+
+    def _save_device_ips(self) -> None:
+        try:
+            DEVICE_IPS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", dir=str(DEVICE_IPS_FILE.parent),
+                prefix=".device_ips.", suffix=".tmp", delete=False,
+            )
+            try:
+                json.dump(self._device_ips_meta, tmp, indent=2)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            finally:
+                tmp.close()
+            os.replace(tmp.name, DEVICE_IPS_FILE)
+        except Exception as exc:
+            logger.warning("Failed to persist device_ips cache: %s", exc)
+            try:
+                if "tmp" in locals() and os.path.exists(tmp.name):
+                    os.unlink(tmp.name)
+            except Exception:
+                pass
 
     def set_store(self, store):
         """Attach store reference."""
@@ -148,9 +216,7 @@ class DeviceManager:
                 return bool(r.get("wifi_connections_enabled"))
         return False
 
-    async def discover(self, _usbmuxd_retry_done: bool = False,
-                       scope_udids: set = None) -> list[dict]:
-        """Scan for iPhones/iPads via usbmux (USB + WiFi/Network)."""
+    async def discover(self, scope_udids: set = None) -> tuple[list[dict], list[dict]]:
         try:
             try:
                 devices = await list_devices()
@@ -167,6 +233,8 @@ class DeviceManager:
                     by_udid[dev.serial] = {"dev": dev, "connection": ct}
 
             result = []
+            need_lockdown = []
+
             for udid, info in by_udid.items():
                 self._device_connection[udid] = info["connection"]
                 if udid in self.sessions:
@@ -182,8 +250,25 @@ class DeviceManager:
                         "ios_untested": False,
                         "wifi_connections_enabled": await self._wifi_enabled(udid),
                     })
-                    continue
+                elif udid in self._device_names and udid in self._device_models:
+                    ios_ver = self._device_ios.get(udid, "Unknown")
+                    result.append({
+                        "udid": udid,
+                        "name": self._device_names[udid],
+                        "model": self._device_models[udid],
+                        "ios_version": ios_ver,
+                        "connection": info["connection"],
+                        "ip": self._device_ips.get(udid),
+                        "active": False,
+                        "ios_untested": _is_ios_untested(ios_ver),
+                        "wifi_connections_enabled": await self._wifi_enabled(udid),
+                    })
+                    logger.info("Found (cached): %s (%s) via %s",
+                                self._device_names[udid], udid[:12], info["connection"])
+                else:
+                    need_lockdown.append((udid, info))
 
+            async def _fetch_device_info(udid: str, info: dict) -> dict:
                 lockdown = None
                 try:
                     lockdown = await asyncio.wait_for(
@@ -201,7 +286,8 @@ class DeviceManager:
                             "iOS %s has not been verified with GGEO "
                             "(tested max: %s). GPS simulation may not work.",
                             ios_ver, TESTED_MAX_IOS)
-                    result.append({
+                    logger.info("Found: %s (%s) via %s", name, udid[:12], info["connection"])
+                    return {
                         "udid": udid,
                         "name": name,
                         "model": model,
@@ -211,11 +297,10 @@ class DeviceManager:
                         "active": False,
                         "ios_untested": untested,
                         "wifi_connections_enabled": await self._wifi_enabled(udid),
-                    })
-                    logger.info("Found: %s (%s) via %s", name, udid[:12], info["connection"])
+                    }
                 except Exception as e:
                     logger.warning("Could not get info for %s: %s", udid[:12], e)
-                    result.append({
+                    return {
                         "udid": udid,
                         "name": self._device_names.get(udid, "Unknown"),
                         "model": self._device_models.get(udid, "Unknown"),
@@ -225,7 +310,7 @@ class DeviceManager:
                         "active": False,
                         "ios_untested": False,
                         "wifi_connections_enabled": await self._wifi_enabled(udid),
-                    })
+                    }
                 finally:
                     if lockdown is not None:
                         try:
@@ -233,115 +318,88 @@ class DeviceManager:
                         except Exception:
                             pass
 
+            if need_lockdown:
+                tasks = [_fetch_device_info(udid, info) for udid, info in need_lockdown]
+                fetched = await asyncio.gather(*tasks, return_exceptions=True)
+                for item in fetched:
+                    if isinstance(item, Exception):
+                        logger.warning("Parallel fetch task error: %s", item)
+                        continue
+                    result.append(item)
+
             found_udids = {r["udid"] for r in result}
-            await self._bonjour_discover(result, found_udids)
+
+            if scope_udids is None or not (found_udids >= scope_udids):
+                await self._bonjour_discover(result, found_udids, scope_udids)
+
+            result_udids = {r["udid"] for r in result}
+            for udid, sess in list(self.sessions.items()):
+                if udid in result_udids:
+                    continue
+                if scope_udids is not None and udid not in scope_udids:
+                    continue
+                result.append({
+                    "udid": udid,
+                    "name": sess.name,
+                    "model": self._device_models.get(udid, "Unknown"),
+                    "ios_version": self._device_ios.get(udid, "Unknown"),
+                    "connection": sess.connection_type or "Network",
+                    "ip": sess.ip,
+                    "active": True,
+                    "ios_untested": False,
+                    "wifi_connections_enabled": await self._wifi_enabled(udid),
+                })
+                logger.info("Discover: included active session %s from sessions cache",
+                            udid[:12])
+
             if scope_udids is not None:
                 result = [r for r in result if r["udid"] in scope_udids]
 
             for r in result:
                 self._device_names.setdefault(r["udid"], r["name"])
 
-            if sys.platform == "darwin" and not _usbmuxd_retry_done:
-                registered = await self._list_registered()
-                if registered:
-                    try:
-                        registered_udids = {
-                            d["udid"] for d in registered if d.get("udid")
-                        }
-                        if scope_udids is not None:
-                            registered_udids &= scope_udids
-                        found_udids_now = {r["udid"] for r in result}
-                        missing = registered_udids - found_udids_now
-                        if missing:
-                            logger.info(
-                                "Discover: %d missing device(s) in scope (%s). "
-                                "Kick usbmuxd to refresh.",
-                                len(missing),
-                                [u[:12] for u in list(missing)[:3]])
-                            from ggeo.device.tunnel import maybe_restart_usbmuxd
-                            if await maybe_restart_usbmuxd(source="discover"):
-                                for _ in range(8):
-                                    await asyncio.sleep(2)
-                                    try:
-                                        current = await list_devices()
-                                        if any(d.serial in missing for d in current):
-                                            break
-                                    except Exception:
-                                        continue
-                                recursive_result = await self.discover(
-                                    _usbmuxd_retry_done=True,
-                                    scope_udids=scope_udids)
-                                recursive_udids = {r["udid"] for r in recursive_result}
-                                still_missing = missing - recursive_udids
-                                logger.info(
-                                    "Discover: post-kick recursive returned %d device(s); "
-                                    "still missing: %s",
-                                    len(recursive_udids),
-                                    [u[:12] for u in still_missing])
-                                registered_by_udid = {
-                                    d["udid"]: d for d in registered if d.get("udid")
-                                }
-                                for udid in still_missing:
-                                    ip = self._device_ips.get(udid)
-                                    if not ip:
-                                        logger.info(
-                                            "Discover: %s no IP cached, skip ping fallback",
-                                            udid[:12])
-                                        continue
-                                    logger.info(
-                                        "Discover: ping-fallback %s @ %s",
-                                        udid[:12], ip)
-                                    try:
-                                        proc = await asyncio.create_subprocess_exec(
-                                            "ping", "-c", "1", "-t", "2", ip,
-                                            stdout=asyncio.subprocess.DEVNULL,
-                                            stderr=asyncio.subprocess.DEVNULL,
-                                        )
-                                        try:
-                                            await asyncio.wait_for(proc.wait(), timeout=3)
-                                            if proc.returncode == 0:
-                                                reg = registered_by_udid.get(udid)
-                                                if reg:
-                                                    logger.info(
-                                                        "Discover: %s ping OK, add Silent entry",
-                                                        udid[:12])
-                                                    recursive_result.append({
-                                                        "udid": udid,
-                                                        "name": reg.get("name", "Unknown"),
-                                                        "model": reg.get("model", "Unknown"),
-                                                        "ios_version": reg.get("ios_version", "Unknown"),
-                                                        "connection": "Silent",
-                                                        "ip": ip,
-                                                        "active": False,
-                                                        "ios_untested": False,
-                                                        "bonjour_silent": True,
-                                                        "wifi_connections_enabled": bool(
-                                                            reg.get("wifi_connections_enabled", 0)),
-                                                    })
-                                            else:
-                                                logger.info(
-                                                    "Discover: %s ping failed (rc=%s)",
-                                                    udid[:12], proc.returncode)
-                                        except asyncio.TimeoutError:
-                                            proc.kill()
-                                            logger.info("Discover: %s ping timeout", udid[:12])
-                                    except Exception as ping_err:
-                                        logger.info(
-                                            "Discover: %s ping error: %s",
-                                            udid[:12], ping_err)
-                                return recursive_result
-                    except Exception as e:
-                        logger.warning("Discover auto-kick usbmuxd failed: %s", e)
+            missing_devices = []
+            registered = await self._list_registered()
+            if registered:
+                registered_udids = {
+                    d["udid"] for d in registered if d.get("udid")
+                }
+                if scope_udids is not None:
+                    registered_udids &= scope_udids
+                found_final = {r["udid"] for r in result}
+                missing_udids = registered_udids - found_final
+                if missing_udids:
+                    registered_by_udid = {
+                        d["udid"]: d for d in registered if d.get("udid")
+                    }
+                    for udid in missing_udids:
+                        reg = registered_by_udid.get(udid, {})
+                        meta = self._device_ips_meta.get(udid, {})
+                        missing_devices.append({
+                            "udid": udid,
+                            "name": reg.get("name", self._device_names.get(udid, "Unknown")),
+                            "model": reg.get("model", self._device_models.get(udid, "Unknown")),
+                            "last_seen": meta.get("last_seen"),
+                        })
+                    logger.info(
+                        "Discover: %d missing device(s): %s",
+                        len(missing_udids),
+                        [u[:12] for u in missing_udids])
+
+            self._last_missing = missing_devices
 
             if not result:
                 logger.warning("No devices found.")
-            return result
+            return result, missing_devices
         except Exception as e:
             logger.error("Device discovery failed: %s", e)
-            return []
+            return [], []
 
-    async def _bonjour_discover(self, result: list, found_udids: set):
-        """Bonjour WiFi discovery (cross-platform) with caching."""
+    async def _bonjour_discover(self, result: list, found_udids: set,
+                               scope_udids: set = None):
+        if self._bonjour_broken:
+            return
+
         now = time.time()
 
         if self._bonjour_cache and (now - self._bonjour_cache_at) < BONJOUR_CACHE_TTL:
@@ -362,21 +420,20 @@ class DeviceManager:
             return
 
         new_cache: list[dict] = []
-        try:
+
+        async def _browse():
             async for ip, ld in get_mobdev2_lockdowns():
                 try:
                     if ip and ":" in str(ip):
                         continue
                     try:
                         info = ld.short_info
-                    except Exception as info_err:
-                        logger.debug("Bonjour short_info failed for %s: %s",
-                                     ip, info_err)
+                    except Exception:
                         continue
                     udid = info.get("UniqueDeviceID") or getattr(ld, "identifier", None)
                     if not udid:
                         continue
-                    self._device_ips[udid] = ip
+                    self._record_device_ip(udid, ip, source="bonjour", persist=False)
                     if udid in found_udids:
                         continue
                     name = info.get("DeviceName", self._device_names.get(udid, "Unknown"))
@@ -402,11 +459,18 @@ class DeviceManager:
                     found_udids.add(udid)
                     self._device_connection[udid] = "Network"
                     logger.info("Found (Bonjour): %s (%s) @ %s", name, udid[:12], ip)
+                    if scope_udids and found_udids >= scope_udids:
+                        return
                 finally:
                     try:
                         await ld.close()
                     except Exception:
                         pass
+
+        try:
+            await asyncio.wait_for(_browse(), timeout=2.0)
+        except asyncio.TimeoutError:
+            logger.info("Bonjour browse timeout (2s), found %d device(s)", len(new_cache))
         except Exception as e:
             logger.debug("Bonjour discovery failed: %s", e)
             return
@@ -419,11 +483,13 @@ class DeviceManager:
                         "Bonjour browse returned empty but %d device(s) registered. "
                         "Check macOS Local Network permission for the Python venv.",
                         len(registered))
+                    self._bonjour_broken = True
             except Exception:
                 pass
 
         self._bonjour_cache = new_cache
         self._bonjour_cache_at = now
+        self._save_device_ips()
 
     def get_device_name(self, udid: str) -> str:
         return self._device_names.get(udid, udid[:12])

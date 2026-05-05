@@ -5,6 +5,57 @@ All notable changes to GGEO Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] — 2026-05-06
+
+Scan optimization — admin scan turun dari 42s ke 4.2s cold (12ms warm),
+ghayan dari 12.7s ke 8ms. Ditambah on-demand kick UI dan subnet scan
+fallback untuk menemukan device yang Bonjour/usbmuxd tidak terlihat.
+
+### Phase 1 — Scan refactor (5 Mei 2026)
+
+- `discover()` sekarang return `tuple[list, list]` (found, missing).
+  Auto-kick + ping fallback dihapus dari hot path; pindah ke endpoint
+  on-demand `/api/device/find` (Phase 2).
+- Parallel device info fetch via `asyncio.gather()` — sebelumnya
+  sequential per-device dengan timeout 10s, sekarang jalan bersamaan.
+- Cached fast-path: device yang sudah pernah di-scan skip lockdown,
+  langsung pakai cached name/model/ios. Warm scan jadi <25ms.
+- Bonjour discovery: `asyncio.wait_for(timeout=2s)` + early-exit saat
+  scope_udids terpenuhi + auto-disable flag `_bonjour_broken` setelah
+  detect Local Network permission broken (mDNS empty + registered ada).
+
+### Phase 2 — On-demand kick + UI (6 Mei 2026)
+
+- `POST /api/device/find {udid}` baru: kick usbmuxd + poll 8x2s untuk
+  target UDID, return `{found, device}`. Auth: admin atau user yang
+  punya akses ke UDID tersebut.
+- `activate()` auto-find: kalau UDID belum ada di `_device_connection`,
+  trigger kick + poll + re-discover dulu sebelum activate. Hilangkan
+  error "device not found" untuk device yang offline-then-online.
+- Frontend: section "Tidak Terdeteksi" di bawah device list, tombol
+  "Coba Temukan" per device dengan loading state + toast feedback.
+- `Device._t(key, fallback)` fix: forward fallback ke `I18N.t()` —
+  sebelumnya semua label baru tampil sebagai key mentah.
+
+### Phase 3 — Subnet scan fallback (6 Mei 2026)
+
+- `ggeo/device/network_scan.py` baru: detect subnet via socket connect
+  ke 8.8.8.8, parse `arp -a` (macOS + Linux/Windows), async TCP probe
+  port 62078 (lockdown) dengan `Semaphore(50)`, identify device via
+  `create_using_tcp(autopair=False)` untuk dapat `product_type`.
+- Match strategy: udid first (kalau available), fallback ke unique
+  `product_type` match. Tanpa pairing, TCP lockdown tidak return UDID
+  jadi unique-model match adalah jalur utama.
+- `/api/device/find` Step 2: kalau Step 1 (kick + poll) gagal, panggil
+  `find_device_by_subnet()`. Update `device_ips.json` dengan IP baru
+  + source `"subnet_scan"`. Re-discover scope_udids untuk dapat full
+  device data.
+- Param `skip_kick=1` (query atau body) untuk testing subnet scan
+  secara terisolasi tanpa interference Step 1.
+- Performance: subnet scan online device ~600ms, offline ~2.2s.
+  Kombinasi worst case kick+subnet ~25s (sequential).
+
+
 ## [2.3.3] — 2026-05-04
 
 Wizard E2E hardening — tested on Mac + Windows. All 6 menus + new

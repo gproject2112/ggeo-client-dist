@@ -92,6 +92,7 @@
 
                     <div class="device-list" id="deviceList" style="display:none"></div>
 
+                    <div id="missingDevices" class="missing-section" style="display:none"></div>
                     <div id="bonjourSilentHint" class="warn-soft-hint" hidden></div>
                     <div id="wifiUnreachableHint" class="warn-soft-hint" hidden></div>
 
@@ -485,6 +486,7 @@
             try {
                 var data = await App.api("GET", "/api/auth/me");
                 currentUser = data;
+                window.currentUser = data;
                 document.getElementById("avatarInitial").textContent = (data.username || "?").charAt(0).toUpperCase();
                 document.getElementById("avatarMenuName").textContent = data.username;
                 document.getElementById("avatarMenuRole").textContent = data.role;
@@ -601,10 +603,31 @@
 
                 Device._scanToastEnabled = false;
                 Device.initSSE();
-                await Device.loadCached();
-                if (!Device.shouldSkipScan()) {
-                    Device.scan();
-                }
+                try {
+                    var stat = await App.api("GET", "/api/device/status");
+                    var sess = (stat && stat.sessions) || {};
+                    var keys = Object.keys(sess);
+                    if (keys.length > 0) {
+                        var placeholders = keys.map(function(udid) {
+                            Device._lastSessions[udid] = sess[udid];
+                            return {
+                                udid: udid,
+                                name: sess[udid].name || udid.slice(0, 12),
+                                connection: sess[udid].connection_type || "",
+                                wifi_connections_enabled: false,
+                                active: !!sess[udid].is_active,
+                                bonjour_silent: false,
+                            };
+                        });
+                        Device.devices = placeholders;
+                        Device.renderDeviceList(placeholders);
+                        var deviceList = document.getElementById("deviceList");
+                        var scanEmpty = document.getElementById("scanEmpty");
+                        if (deviceList) deviceList.style.display = "flex";
+                        if (scanEmpty) scanEmpty.style.display = "none";
+                    }
+                } catch (e) {}
+                Device.scan();
                 updatePickerActive();
                 updateSavePresetBtn();
             } catch (e) {

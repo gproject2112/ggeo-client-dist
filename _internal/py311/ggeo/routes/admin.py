@@ -114,7 +114,7 @@ async def scan_unregistered_devices(request: Request):
     """Scan for devices not yet in the host's registered_devices."""
     await require_client_admin(request)
     mgr = request.app.state.device_manager
-    discovered = await mgr.discover()
+    discovered, _ = await mgr.discover()
 
     try:
         host_response = await _forward(request, "GET", "devices")
@@ -143,7 +143,7 @@ async def register_device(request: Request):
         )
 
     mgr = request.app.state.device_manager
-    discovered = await mgr.discover()
+    discovered, _ = await mgr.discover()
     entry = next((d for d in discovered if d["udid"] == udid), None)
     is_usb = bool(entry and entry.get("connection") == "USB")
 

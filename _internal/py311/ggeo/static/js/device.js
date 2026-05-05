@@ -17,6 +17,78 @@ var Device = {
     _lastToastedState: {},
     _previewLocationName: {},
     _previewLocationCoord: {},
+    _missingDevices: [],
+
+    renderMissing: function(list) {
+        var self = this;
+        self._missingDevices = list || [];
+        var container = document.getElementById("missingDevices");
+        if (!container) return;
+        if (!list || !list.length) {
+            container.style.display = "none";
+            container.innerHTML = "";
+            return;
+        }
+        var html = '<div class="missing-header">'
+            + '<span class="missing-icon">!</span> '
+            + self._t("missing_title", "Tidak Terdeteksi")
+            + '</div>';
+        list.forEach(function(d) {
+            var ago = "";
+            if (d.last_seen) {
+                var diff = Math.floor((Date.now() / 1000) - d.last_seen);
+                if (diff < 3600) ago = Math.floor(diff / 60) + " menit lalu";
+                else if (diff < 86400) ago = Math.floor(diff / 3600) + " jam lalu";
+                else ago = Math.floor(diff / 86400) + " hari lalu";
+            }
+            html += '<div class="missing-row" data-udid="' + d.udid + '">'
+                + '<div class="missing-info">'
+                + '<span class="missing-name">' + (d.name || d.udid.slice(0, 12)) + '</span>'
+                + (ago ? '<span class="missing-ago">' + self._t("last_seen", "Terakhir") + ': ' + ago + '</span>' : '')
+                + '</div>'
+                + '<button class="missing-find-btn" onclick="Device.findDevice(\'' + d.udid + '\', this)">'
+                + self._t("try_find", "Coba Temukan")
+                + '</button>'
+                + '</div>';
+        });
+        container.innerHTML = html;
+        container.style.display = "block";
+    },
+
+    findDevice: async function(udid, btn) {
+        var self = this;
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = self._t("finding", "Mencari...");
+        }
+        try {
+            var res = await fetch("/api/device/find", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({udid: udid}),
+            });
+            var json = await res.json();
+            if (json.status === "ok" && json.data && json.data.found) {
+                App.toast(self._t("device_found", "Device ditemukan"));
+                self.scan();
+            } else {
+                if (btn) btn.textContent = self._t("not_found", "Tidak ditemukan");
+                App.toast(self._t("device_not_found_net", "Tidak ditemukan di jaringan ini"), true);
+                setTimeout(function() {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = self._t("try_find", "Coba Temukan");
+                    }
+                }, 3000);
+            }
+        } catch (e) {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = self._t("try_find", "Coba Temukan");
+            }
+            App.toast(self._t("err_find_failed", "Gagal mencari device"), true);
+        }
+    },
 
     _syncMapMarkers: function() {
         if (typeof GMap === "undefined" || !GMap.map) return;
@@ -203,7 +275,7 @@ var Device = {
     },
 
     _t: function(key, fallback) {
-        if (typeof I18N !== "undefined") return I18N.t(key);
+        if (typeof I18N !== "undefined") return I18N.t(key, fallback);
         return fallback || key;
     },
 
@@ -228,48 +300,6 @@ var Device = {
             .catch(function() {});
     },
 
-    loadCached: async function() {
-        var self = this;
-        try {
-            var data = await App.api("GET", "/api/device/cached");
-            self.devices = (data || []).map(function(d) {
-                return {
-                    udid: d.udid,
-                    name: d.name,
-                    model: d.model,
-                    ios_version: d.ios_version,
-                    ip: d.ip,
-                    connection: d.connection,
-                    wifi_connections_enabled: d.wifi_connections_enabled,
-                    active: d.active,
-                    bonjour_silent: false,
-                    from_cache: true,
-                };
-            });
-            (data || []).forEach(function(d) {
-                if (d.session) self._lastSessions[d.udid] = d.session;
-            });
-            self.renderDeviceList(self.devices);
-            self._cachedLoaded = true;
-            return self.devices;
-        } catch (e) {
-            self._cachedLoaded = false;
-            return [];
-        }
-    },
-
-    shouldSkipScan: function() {
-        var self = this;
-        if (!self._cachedLoaded) return false;
-        var u = window.currentUser;
-        if (!u) return false;
-        if (u.role === "client_admin") return false;
-        var assigned = u.device_udids || (u.device_udid ? [u.device_udid] : []);
-        if (assigned.length !== 1) return false;
-        var sess = (self._lastSessions || {})[assigned[0]];
-        return !!(sess && (sess.is_active || sess.connection_status === "active"));
-    },
-
     scan: async function() {
         var self = this;
         if (self._scanning) return;
@@ -287,7 +317,9 @@ var Device = {
         if (rescan) rescan.classList.add("spin");
         if (scanSpin) scanSpin.style.display = "inline-block";
         if (scanHead) scanHead.textContent = self._t("scanning_devices", "Scanning…");
-        if (scanEmpty) scanEmpty.style.display = (self.devices && self.devices.length) ? "none" : "flex";
+        if (scanEmpty) scanEmpty.style.display = "flex";
+        var scanMini = document.querySelector("#scanEmpty .scan-mini");
+        if (scanMini) scanMini.style.display = (self.devices && self.devices.length) ? "none" : "flex";
         if (scanResult) scanResult.style.display = "none";
         if (scanProgress) scanProgress.style.display = "block";
         if (scanBar) scanBar.style.width = "0%";
@@ -301,7 +333,11 @@ var Device = {
         var MIN_SCAN_MS = 600;
 
         try {
-            var data = await App.api("GET", "/api/device/scan");
+            var scanRes = await fetch("/api/device/scan");
+            var scanJson = await scanRes.json();
+            if (scanJson.status !== "ok") throw new Error(scanJson.message || "Scan failed");
+            var data = scanJson.data || [];
+            var missingData = scanJson.missing || [];
             var silentDevices = data.filter(function(d) { return d.bonjour_silent; });
             var normalDevices = data.filter(function(d) { return !d.bonjour_silent; });
             self.devices = normalDevices;
@@ -328,7 +364,6 @@ var Device = {
             self._cleanupOrphanSessions(normalDevices);
             self.renderDeviceList(normalDevices);
             self._syncMapMarkers();
-            // scanEmpty visible only if truly empty (no devices AND no active sessions)
             var hasCards = normalDevices.length > 0;
             if (scanEmpty) scanEmpty.style.display = hasCards ? "none" : "flex";
             if (scanResult && hasCards) {
@@ -351,9 +386,10 @@ var Device = {
             }
             self._scanToastEnabled = true;
             if (deviceList) deviceList.style.display = hasCards ? "flex" : "none";
-            if (scanHead && !hasCards) {
+            if (scanHead && !hasCards && !missingData.length) {
                 scanHead.textContent = self._t("no_devices", "No devices");
             }
+            self.renderMissing(missingData);
         } catch (e) {
             App.toast(self._t("err_scan_failed", "Scan failed") + ": " + e.message, true);
         } finally {
@@ -367,6 +403,11 @@ var Device = {
                 setTimeout(function() {
                     if (scanProgress) scanProgress.style.display = "none";
                     if (scanBar) scanBar.style.width = "0%";
+                    var scanMiniRestore = document.querySelector("#scanEmpty .scan-mini");
+                    if (scanMiniRestore) scanMiniRestore.style.display = "flex";
+                    if (scanEmpty && self.devices && self.devices.length) {
+                        scanEmpty.style.display = "none";
+                    }
                 }, 350);
             }
             if (rescan) rescan.classList.remove("spin");
