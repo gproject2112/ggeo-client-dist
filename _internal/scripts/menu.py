@@ -276,7 +276,7 @@ def action_setup() -> None:
     clear_screen()
     setup_py = INTERNAL / "setup.py"
     if platform.system() == "Windows":
-        rc = subprocess.call(["python", str(setup_py)])
+        rc = subprocess.call([sys.executable, str(setup_py)])
     else:
         rc = subprocess.call(["sudo", sys.executable, str(setup_py)])
     if rc != 0:
@@ -321,7 +321,7 @@ def action_start_with_log() -> None:
     elif platform.system() == "Windows":
         subprocess.Popen(
             ["cmd", "/C", "start", "cmd", "/K",
-             "python", str(self_path), "--view-log"],
+             sys.executable, str(self_path), "--view-log"],
             shell=False,
         )
     time.sleep(1)
@@ -436,7 +436,7 @@ def action_update() -> None:
     env["GGEO_AUTO_MODE"] = "1"
     setup_py = INTERNAL / "setup.py"
     if platform.system() == "Windows":
-        setup_cmd = ["python", str(setup_py)]
+        setup_cmd = [sys.executable, str(setup_py)]
     else:
         setup_cmd = ["sudo", "-E", sys.executable, str(setup_py)]
     rc = subprocess.run(setup_cmd, env=env).returncode

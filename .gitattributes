@@ -1,5 +1,0 @@
-* text=auto eol=lf
-*.bat text eol=crlf
-_internal/py311/** binary
-_internal/py312/** binary
-_internal/py313/** binary

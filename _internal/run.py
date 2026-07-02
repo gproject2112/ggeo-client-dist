@@ -35,7 +35,23 @@ def main() -> None:
     target = ROOT / py_tag
     entry = target / "run.py"
     if not entry.exists():
-        _fail(f"  Runtime tree missing: {entry}")
+        available = sorted(
+            p.name for p in ROOT.iterdir()
+            if p.is_dir() and p.name in SUPPORTED and (p / "run.py").exists()
+        )
+        if available:
+            versions = ", ".join(f"3.{t[3:]}" for t in available)
+            _fail(
+                f"  This GGeo install has no runtime for Python {v.major}.{v.minor}.\n"
+                f"  Installed runtimes support Python: {versions}\n"
+                f"  Fix: install Python {versions.split(', ')[0]} from https://python.org/downloads/\n"
+                f"  (or run Update from the GGeo menu after a new release ships)"
+            )
+        _fail(
+            f"  Runtime tree missing: {entry}\n"
+            f"  The installation looks corrupted. Run Update from the GGeo menu,\n"
+            f"  or re-download GGeo."
+        )
 
     sys.path.insert(0, str(target))
     os.chdir(ROOT)

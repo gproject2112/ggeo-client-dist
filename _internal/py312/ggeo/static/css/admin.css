@@ -1,0 +1,500 @@
+/* GGEO Admin Panel styles */
+
+.admin-layout {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.admin-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 20px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+}
+
+.tab-btn {
+    padding: 14px 20px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+}
+
+.tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.admin-content {
+    flex: 1;
+    padding: 24px;
+    max-width: 1400px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.tab-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.tab-header h2 {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.header-right-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.usage-indicator {
+    color: var(--text-muted, #64748b);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    padding: 4px 10px;
+    background: rgba(100, 116, 139, 0.08);
+    border-radius: 6px;
+}
+
+.btn-disabled,
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ── Dashboard ── */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 900px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+}
+
+.big-card { min-height: 300px; }
+
+.big-number {
+    font-size: 64px;
+    font-weight: 700;
+    color: var(--success);
+    text-align: center;
+    padding: 20px 0;
+    line-height: 1;
+}
+
+/* ── Tables ── */
+.table-wrap {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.data-table thead {
+    background: var(--bg-surface);
+}
+
+.data-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+}
+
+.data-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    color: var(--text-primary);
+}
+
+.data-table tr:last-child td {
+    border-bottom: none;
+}
+
+.data-table tr:hover {
+    background: rgba(255,255,255,0.02);
+}
+
+.table-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.table-actions .btn {
+    font-size: 11px;
+    padding: 4px 10px;
+}
+
+/* ── Filter Row ── */
+.filter-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.filter-row .input,
+.filter-row select {
+    min-width: 140px;
+    width: auto;
+}
+
+.filter-row button {
+    white-space: nowrap;
+}
+
+/* ── Modal ── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(4px);
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 440px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-card h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.modal-card label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    margin-top: 10px;
+}
+
+.modal-card .input,
+.modal-card select {
+    margin-bottom: 8px;
+}
+
+.modal-card .buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+.modal-card .buttons .btn {
+    flex: 1;
+}
+
+.modal-error {
+    color: var(--error);
+    font-size: 12px;
+    margin-top: 8px;
+    min-height: 16px;
+}
+
+/* Activity results */
+.activity-section {
+    margin-top: 20px;
+}
+
+.activity-section h3 {
+    font-size: 14px;
+    margin-bottom: 10px;
+    color: var(--text-secondary);
+}
+
+/* Dashboard chart card */
+.chart-card { padding: 16px; }
+.chart-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.chart-range {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+.chart-range-btn {
+    padding: 4px 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+.chart-range-btn:hover { color: var(--text-primary); }
+.chart-range-btn.active {
+    background: var(--accent);
+    color: #fff;
+}
+.chart-canvas-wrap {
+    position: relative;
+    width: 100%;
+    height: 280px;
+}
+.chart-canvas-wrap canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+@media (max-width: 600px) {
+    .chart-canvas-wrap { height: 220px; }
+    .chart-toolbar { flex-direction: column; align-items: stretch; }
+    .chart-range { justify-content: center; }
+}
+
+/* System tab minimalist card grid + log viewer modal */
+.system-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+}
+.system-card { padding: 16px; }
+.system-card-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+.system-card-desc {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+.system-card-danger { border-color: rgba(239,68,68,0.25); }
+.system-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+}
+.system-stat { display: flex; flex-direction: column; gap: 2px; }
+.system-stat-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.system-stat-value {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 600;
+    font-family: "SF Mono", monospace;
+}
+
+/* Log viewer modal (terminal style) */
+.logs-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.logs-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+}
+.logs-modal-content {
+    position: relative;
+    width: 100%;
+    max-width: 960px;
+    height: 80vh;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.logs-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+.logs-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.logs-count {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: "SF Mono", monospace;
+}
+.logs-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.logs-body {
+    flex: 1;
+    padding: 12px 14px;
+    overflow-y: auto;
+    background: #05050a;
+    font-family: "SF Mono", Menlo, Monaco, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: rgba(255,255,255,0.7);
+}
+.logs-line {
+    white-space: pre;
+    padding: 1px 0;
+}
+.logs-line-error { color: #ff6b6b; }
+.logs-line-warning { color: #ffb86c; }
+.logs-line-info { color: rgba(255,255,255,0.75); }
+.logs-line-debug { color: rgba(255,255,255,0.35); }
+.logs-empty {
+    text-align: center;
+    padding: 20px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Card-view tables for mobile (uses data-label attributes) */
+@media (max-width: 600px) {
+    .table-wrap {
+        border: 0;
+        background: transparent;
+        overflow-x: visible;
+    }
+    .data-table,
+    .data-table thead,
+    .data-table tbody,
+    .data-table tr,
+    .data-table td {
+        display: block;
+        width: 100%;
+    }
+    .data-table thead {
+        /* Keep headers in the a11y tree but hide visually. */
+        position: absolute;
+        left: -9999px;
+    }
+    .data-table tr {
+        margin-bottom: 10px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg-surface);
+        padding: 10px 12px;
+    }
+    .data-table tr:hover {
+        background: var(--bg-surface);
+    }
+    .data-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 6px 0;
+        border: 0;
+        text-align: right;
+    }
+    .data-table td + td {
+        border-top: 1px solid var(--border);
+    }
+    .data-table td::before {
+        content: attr(data-label);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 11px;
+        color: var(--text-muted);
+        flex-shrink: 0;
+        text-align: left;
+    }
+    .data-table td.table-actions,
+    .data-table td[data-label="Actions"] {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    .data-table td.table-actions > *,
+    .data-table td[data-label="Actions"] > * {
+        flex: 1 1 auto;
+        text-align: center;
+    }
+    /* Horizontal-scrollable tab strip when overflowing */
+    .admin-tabs,
+    .history-sub-tabs,
+    .history-filter-bar {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+    }
+    .admin-tabs::-webkit-scrollbar,
+    .history-sub-tabs::-webkit-scrollbar {
+        height: 4px;
+    }
+}

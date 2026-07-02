@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GGEO — Sign in</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico?v=155">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png?v=155">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png?v=155">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=155">
+    <script src="/static/js/i18n.js?v=155"></script>
+    <script src="/static/js/version-badge.js?v=155"></script>
+    <style>
+        html,body{position:relative}
+        body{display:block}
+        .login{position:relative;min-height:100vh}
+        .err{font-size:12px;color:var(--danger);margin-top:10px;min-height:16px}
+    </style>
+</head>
+<body>
+    <div class="login">
+            <div class="login-left">
+            <div class="real-map" id="mapLogin" aria-hidden="true"></div>
+            <div class="veil"></div>
+            <div class="corner tl">
+                <span class="mono" id="loginLat">LAT  −6.208763°</span><br>
+                <span class="mono" id="loginLon">LON  106.845599°</span><br>
+                <span class="ok">● <span data-i18n="login_corner_signal">SIGNAL LOCK</span></span>
+            </div>
+            <div class="corner tr">
+                <span id="loginCity">JAKARTA · ID</span><br>
+                <span data-i18n="login_corner_zone">ZONE</span>  <span id="loginTz">GMT+07</span>
+            </div>
+            <div class="tagline">
+                <h2>
+                    <span data-i18n="login_tagline_lead">ggeo,</span><br>
+                    <em data-i18n="login_tagline_em">precisely</em>
+                    <span data-i18n="login_tagline_tail">where you need it.</span>
+                </h2>
+                <p data-i18n="login_tagline_sub">Deploy location-anchored device sessions across your fleet. On-prem. Audited. Per-site.</p>
+            </div>
+        </div>
+
+        <div class="login-right">
+            <div class="login-top">
+                <span class="logo">
+                    <img src="/static/logo.png?v=155" alt="GGEO" class="logo-img">
+                    <span class="logo-text">ggeo</span>
+                </span>
+                <span class="lang">
+                    <button type="button" class="lang-toggle-btn" data-lang="en" onclick="I18N.toggle('en')">EN</button>
+                    <button type="button" class="lang-toggle-btn" data-lang="id" onclick="I18N.toggle('id')">ID</button>
+                </span>
+            </div>
+
+            <div class="login-body">
+                <div class="sig">
+                    <span class="dot on"></span>&nbsp;<span data-i18n="login_ready">READY</span>
+                </div>
+                <h1>
+                    <span data-i18n="login_lead">Sign in to</span>
+                    <em data-i18n="login_lead_em">ggeo</em>
+                </h1>
+                <div class="sub">
+                    <span id="loginClientName">…</span> ·
+                    <span class="mono" id="loginClientHost" style="color:var(--fg)">ggeo-client.local</span>
+                </div>
+
+                <form id="login-form" onsubmit="return handleLogin(event)" novalidate>
+                    <div class="field">
+                        <span class="label" data-i18n="username">Username</span>
+                        <input class="input" type="text" id="username" data-i18n-placeholder="enter_username" placeholder="Enter username" autocomplete="username" autofocus required>
+                    </div>
+                    <div class="field">
+                        <span class="label" data-i18n="password">Password</span>
+                        <div class="pwd-wrap">
+                            <input class="input" type="password" id="password" data-i18n-placeholder="enter_password" placeholder="Enter password" autocomplete="current-password" required>
+                            <button type="button" class="pwd-toggle" id="pwdToggle" aria-label="Show password" onclick="togglePwd('password', this)">
+                                <svg class="eye-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            </button>
+                        </div>
+                        <div class="caps-hint" id="capsHint" hidden data-i18n="caps_lock_on">Caps Lock is on</div>
+                    </div>
+                    <button type="submit" id="login-btn" class="btn btn-primary"><span data-i18n="sign_in">Sign in</span> &nbsp;→</button>
+                    <div class="err" id="error-msg" role="alert" aria-live="polite"></div>
+                </form>
+            </div>
+
+            <div class="login-foot">
+                <span id="versionBadge">GGEO v—</span>
+                <span>© Gpro · badupro</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        I18N.init();
+
+        (function initLoginMap(){
+            var el = document.getElementById('mapLogin');
+            if (!el || typeof L === 'undefined') return;
+
+            var DEFAULT = [-6.2088, 106.8456]; // Jakarta
+            var pinIcon = L.divIcon({
+                className: 'ggeo-pin',
+                html: '<span class="pulse p1"></span><span class="pulse p2"></span><span class="core"></span>',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9],
+            });
+
+            var m, marker;
+            try {
+                m = L.map(el, {
+                    zoomControl: false,
+                    dragging: false,
+                    scrollWheelZoom: false,
+                    doubleClickZoom: false,
+                    boxZoom: false,
+                    keyboard: false,
+                    touchZoom: false,
+                    attributionControl: false,
+                    fadeAnimation: false,
+                });
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 20,
+                }).addTo(m);
+                m.setView(DEFAULT, 13);
+                marker = L.marker(DEFAULT, {icon: pinIcon, interactive: false, keyboard: false}).addTo(m);
+            } catch (e) {
+                return;
+            }
+
+            function setCoords(lat, lon) {
+                var fmt = function(v) {
+                    return (v >= 0 ? '' : '−') + Math.abs(v).toFixed(6) + '°';
+                };
+                var latEl = document.getElementById('loginLat');
+                var lonEl = document.getElementById('loginLon');
+                if (latEl) latEl.textContent = 'LAT  ' + fmt(lat);
+                if (lonEl) lonEl.textContent = 'LON  ' + fmt(lon);
+            }
+
+            function setTimezone() {
+                var offsetMin = -new Date().getTimezoneOffset();
+                var sign = offsetMin >= 0 ? '+' : '-';
+                var hr = Math.floor(Math.abs(offsetMin) / 60);
+                var min = Math.abs(offsetMin) % 60;
+                var hh = (hr < 10 ? '0' : '') + hr;
+                var tz = 'GMT' + sign + hh + (min ? ':' + (min < 10 ? '0' : '') + min : '');
+                var tzEl = document.getElementById('loginTz');
+                if (tzEl) tzEl.textContent = tz;
+            }
+
+            function reverseGeocode(lat, lon) {
+                var url = 'https://nominatim.openstreetmap.org/reverse?lat=' + lat
+                        + '&lon=' + lon + '&format=json&zoom=10';
+                return fetch(url, {headers: {'Accept-Language': 'en'}})
+                    .then(function(r){ return r.ok ? r.json() : null; });
+            }
+
+            function setCity(j) {
+                if (!j || !j.address) return;
+                var a = j.address;
+                var city = a.city || a.town || a.village || a.county || a.state || '';
+                var cc = (a.country_code || '').toUpperCase();
+                if (city) {
+                    var cityEl = document.getElementById('loginCity');
+                    if (cityEl) cityEl.textContent = city.toUpperCase() + (cc ? ' · ' + cc : '');
+                }
+            }
+
+            function moveTo(lat, lon) {
+                if (!m) return;
+                m.flyTo([lat, lon], 13, {duration: 1.4});
+                if (marker) marker.setLatLng([lat, lon]);
+            }
+
+            setCoords(DEFAULT[0], DEFAULT[1]);
+            setTimezone();
+
+            if (!navigator.geolocation) return;
+
+            navigator.geolocation.getCurrentPosition(
+                function(pos) {
+                    var lat = pos.coords.latitude;
+                    var lon = pos.coords.longitude;
+                    moveTo(lat, lon);
+                    setCoords(lat, lon);
+                    reverseGeocode(lat, lon).then(setCity).catch(function(){});
+                },
+                function(err) {
+                    var signalEl = document.querySelector('.corner.tl .ok');
+                    if (signalEl && err && err.code === err.PERMISSION_DENIED) {
+                        signalEl.textContent = '○ DEFAULT';
+                        signalEl.style.color = 'var(--fg-mute)';
+                    }
+                },
+                {timeout: 10000, maximumAge: 60000, enableHighAccuracy: false}
+            );
+        })();
+
+        (function fetchClientInfo(){
+            // Subtitle shows: <client_name> · <hostname> (per mockup)
+            document.getElementById('loginClientHost').textContent = window.location.hostname;
+            fetch('/api/auth/client-info', {credentials:'same-origin'})
+                .then(function(r){ return r.ok ? r.json() : null; })
+                .then(function(j){
+                    document.getElementById('loginClientName').textContent =
+                        (j && j.client_name) ? j.client_name : '—';
+                })
+                .catch(function(){
+                    document.getElementById('loginClientName').textContent = '—';
+                });
+        })();
+
+        (function fetchVersion(){
+            fetch('/api/version').then(function(r){return r.ok?r.json():null;})
+                .then(function(j){
+                    if (j && j.version) {
+                        document.getElementById('versionBadge').textContent = 'GGEO v' + j.version;
+                    }
+                })
+                .catch(function(){});
+        })();
+
+        function togglePwd(id, btn) {
+            var inp = document.getElementById(id);
+            if (!inp || !btn) return;
+            var on = btn.querySelector('.eye-on');
+            var off = btn.querySelector('.eye-off');
+            if (inp.type === 'password') {
+                inp.type = 'text';
+                if (on) on.style.display = 'none';
+                if (off) off.style.display = '';
+                btn.setAttribute('aria-label', I18N.t('hide_password', 'Hide password'));
+            } else {
+                inp.type = 'password';
+                if (on) on.style.display = '';
+                if (off) off.style.display = 'none';
+                btn.setAttribute('aria-label', I18N.t('show_password', 'Show password'));
+            }
+        }
+
+        (function setupCaps(){
+            var inp = document.getElementById('password');
+            var hint = document.getElementById('capsHint');
+            if (!inp || !hint) return;
+            var update = function(e) {
+                var on = e.getModifierState && e.getModifierState('CapsLock');
+                hint.hidden = !on;
+            };
+            inp.addEventListener('keydown', update);
+            inp.addEventListener('keyup', update);
+            inp.addEventListener('blur', function(){ hint.hidden = true; });
+        })();
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            var btn = document.getElementById('login-btn');
+            var errEl = document.getElementById('error-msg');
+            var username = document.getElementById('username').value.trim();
+            var password = document.getElementById('password').value;
+
+            errEl.textContent = '';
+            if (!username || !password) {
+                errEl.textContent = I18N.t('err_required_fields');
+                return false;
+            }
+
+            btn.disabled = true;
+            var origLabel = btn.textContent;
+            btn.textContent = I18N.t('signing_in');
+
+            try {
+                var res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username: username, password: password}),
+                });
+                var json = await res.json();
+                if (json.status === 'ok') {
+                    var role = json.user && json.user.role;
+                    window.location.href = role === 'client_admin' ? '/admin' : '/';
+                    return false;
+                }
+                errEl.textContent = json.message || json.detail || I18N.t('err_login_failed');
+            } catch (err) {
+                errEl.textContent = I18N.t('err_connection');
+            }
+
+            btn.disabled = false;
+            btn.textContent = origLabel;
+            return false;
+        }
+    </script>
+</body>
+</html>
