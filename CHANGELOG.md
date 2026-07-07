@@ -5,6 +5,91 @@ All notable changes to GGEO Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] — 2026-07-07
+
+Perbaikan dua masalah produksi. (1) Install Windows gagal total dengan
+`Runtime tree missing _internal/py312/run.py` — akar masalahnya rilis
+lokal yang menghapus tree py312/py313 dari dist repo. (2) Device iOS
+susah terdeteksi — latch Bonjour permanen, timeout pairing terlalu
+pendek, kill usbmuxd tak diverifikasi, dan mount DDI sekali-tembak.
+Ditambah boot degraded supaya client tetap jalan saat host sesaat tak
+terjangkau. 30 unit test baru; semua perbaikan lolos review dua tahap.
+
+### Windows runtime — "Runtime tree missing" fix
+
+- `release.py::_push_dist` sekarang MENOLAK push (exit ≠ 0) kalau ada
+  py-tree yang hilang dari `dist/_internal/`. Sebelumnya ia menghapus
+  seluruh isi dist repo lalu menyalin hanya satu py-tag yang bisa
+  di-build interpreter lokal — itu yang menghapus tree py312/py313
+  saat 2.4.0 di-push dari Mac (Python 3.11). CI matrix tetap jadi
+  jalur publish resmi ketiga versi.
+- Dispatcher (`dist-only/run.py`, `tray.py`) tak lagi menampilkan path
+  internal yang membingungkan. Saat tree untuk versi Python user tidak
+  ada, pesan menyebut versi Python yang DIDUKUNG install ini (atau
+  menandai install korup) + arahan ke python.org / menu Update.
+- `.github/workflows/release-dist.yml` tak lagi mengabaikan
+  `dist-only/**` dan `CHANGELOG.md` (keduanya ikut di-ship) — commit
+  yang hanya menyentuh dispatcher/changelog kini memicu rilis dist.
+  `docs/**` dan `tests/**` ditambahkan ke paths-ignore.
+- `release.py::_check_client_version()` baru: build gagal kalau
+  `CLIENT_VERSION` (`ggeo/config.py`, dikirim di heartbeat) tidak sama
+  dengan file `VERSION`. Mencegah version drift ke host.
+- `scripts/menu.py`: launch setup/log-viewer pakai `sys.executable`,
+  bukan `"python"` dari PATH — di Windows PATH bisa menunjuk
+  interpreter versi/arsitektur berbeda dari yang menjalankan menu.
+
+### Device detection — resilience
+
+- Latch Bonjour tak lagi permanen. Satu browse kosong dulu menyetel
+  `_bonjour_broken=True` selamanya (mematikan discovery WiFi sampai
+  restart aplikasi); kini `_bonjour_broken_until` dengan TTL 5 menit.
+  Timeout browse dinaikkan 2s → 4s (jawaban mDNS dari device tidur/
+  roaming rutin >2s). Latch juga tak trip kalau browse hanya
+  memunculkan device yang sudah ketemu via USB (`browse_yielded`).
+- Timeout lockdown di session loop dinaikkan 10s → 30s
+  (`LOCKDOWN_CONNECT_TIMEOUT`) supaya prompt "Trust" pairing pertama
+  kali selamat. Timeout discovery tetap 10s biar scan tetap cepat.
+- `maybe_restart_usbmuxd`: hasil `/bin/kill` kini diperiksa — kill
+  non-root yang gagal tak lagi diam-diam dianggap sukses. Cooldown
+  jadi global (satu timestamp), bukan per-source; sebelumnya caller
+  berbeda saling melewati cooldown dan usbmuxd bisa di-kill beberapa
+  kali per menit — tiap kill memutus SEMUA koneksi usbmux termasuk
+  sesi device lain.
+- Auto-mount DDI di-retry pada reconnect berikutnya, bukan sekali
+  tembak. Sebelumnya `_mount_done=True` diset walau mount timeout
+  (iOS 17+ unduh DDI dari internet), jadi sesi tak pernah bisa
+  simulasi sampai give-up 300s. Diekstrak ke `_ensure_ddi_mounted()`.
+- usbmuxd (macOS) / Apple Mobile Device Service (Windows) yang mati
+  kini tampil sebagai hint di UI, bukan daftar device kosong tanpa
+  penjelasan. `discover()` mengeset `last_transport_error`; `/scan`
+  meneruskannya; `device.js` menampilkannya (i18n en + id).
+
+### Host sync — degraded boot
+
+- `startup_validate()` jadi tri-state (`ok` / `rejected` /
+  `unreachable`). Client tak lagi hard-exit saat host cuma tak
+  terjangkau (mis. deploy/blip jaringan) — hanya penolakan eksplisit
+  dari host yang fatal; sisanya boot degraded dan heartbeat pulih
+  sendiri. Aktivasi tetap terblokir sampai heartbeat sukses pertama.
+- Heartbeat & validate mengabaikan respons 5xx dan body JSON tanpa
+  key `valid` (mis. FastAPI 422 saat host deploy) — sebelumnya satu
+  respons buruk bisa menyetel `is_valid=False` dan membunuh sesi GPS
+  aktif seketika, melewati grace window 30-kegagalan.
+- Daftar registered-device dari host dipersist ke
+  `data/registered_devices.json` dan dipakai sebagai fallback saat
+  fetch host gagal — device USB tetap muncul walau host mati. File
+  cache yang korup/malformed diabaikan.
+
+### Catatan
+
+- Host produksi pindah dari Render (`ggeo-host.onrender.com`, ada
+  cold-start ~30s) ke Cloudflare Workers (`ggeo-host.badu.pro`, tanpa
+  cold-start). Ini menghilangkan penyebab dominan gejala "device
+  susah dideteksi" di sisi host; perbaikan boot/cache di atas jadi
+  pertahanan berlapis. `host_url` per-install di `data/client.json`,
+  tidak di-hardcode.
+
+
 ## [2.4.0] — 2026-05-06
 
 Scan optimization — admin scan turun dari 42s ke 4.2s cold (12ms warm),
