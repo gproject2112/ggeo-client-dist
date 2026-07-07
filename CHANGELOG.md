@@ -79,6 +79,12 @@ terjangkau. 30 unit test baru; semua perbaikan lolos review dua tahap.
   `data/registered_devices.json` dan dipakai sebagai fallback saat
   fetch host gagal — device USB tetap muncul walau host mati. File
   cache yang korup/malformed diabaikan.
+- Log heartbeat di-de-noise saat offline berturut-turut (mis. laptop
+  tidur / DNS belum siap): hanya kegagalan pertama yang WARNING,
+  sisanya DEBUG, dengan satu INFO `heartbeat recovered after N` saat
+  pulih. Heartbeat juga tak lagi membangun-ulang pool httpx tiap 10s
+  saat offline (`retry=False`) — `startup_validate`/`send_event`
+  tetap pakai pool-reset retry.
 
 ### Catatan
 
