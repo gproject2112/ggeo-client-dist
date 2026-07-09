@@ -403,6 +403,48 @@ class DeviceManager:
             logger.error("Device discovery failed: %s", e)
             return [], []
 
+    async def presence_snapshot(self) -> list[dict]:
+        """Cheap per-device presence for the host heartbeat (called every ~10s).
+
+        Uses only the lightweight usbmux enumeration (no lockdown, no Bonjour)
+        plus cached metadata, so it is safe on the heartbeat loop. Reports the
+        devices the transport currently sees, letting the host show real
+        per-device status instead of inferring it from client-online alone.
+        Failures return [] — the host then simply doesn't refresh presence.
+        """
+        try:
+            devices = await list_devices()
+        except Exception as e:
+            logger.debug("presence_snapshot list_devices failed: %s", e)
+            return []
+        seen: dict[str, dict] = {}
+        for dev in devices:
+            udid = getattr(dev, "serial", None)
+            if not udid:
+                continue
+            ct = getattr(dev, "connection_type", "USB")
+            # Prefer USB when a device appears on both transports.
+            if udid in seen and seen[udid]["connection_type"] == "USB":
+                continue
+            seen[udid] = {
+                "udid": udid,
+                "connection_type": ct,
+                "name": self._device_names.get(udid),
+                "model": self._device_models.get(udid),
+                "ios_version": self._device_ios.get(udid),
+            }
+        # Live sessions on WiFi may not enumerate via usbmux — include them.
+        for udid, sess in list(self.sessions.items()):
+            if udid not in seen:
+                seen[udid] = {
+                    "udid": udid,
+                    "connection_type": sess.connection_type or "Network",
+                    "name": sess.name,
+                    "model": self._device_models.get(udid),
+                    "ios_version": self._device_ios.get(udid),
+                }
+        return list(seen.values())
+
     async def _bonjour_discover(self, result: list, found_udids: set,
                                scope_udids: set = None):
         if time.time() < self._bonjour_broken_until:
