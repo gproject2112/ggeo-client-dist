@@ -1,11 +1,13 @@
 """Client admin panel routes."""
 import asyncio
+import json
 import logging
 from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
+from sse_starlette.sse import EventSourceResponse
 
 from pymobiledevice3.exceptions import AlreadyMountedError
 from pymobiledevice3.lockdown import create_using_usbmux
@@ -476,3 +478,63 @@ async def truncate_logs(request: Request):
     except OSError as exc:
         logger.warning("log truncate failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"log truncate failed: {exc}")
+
+
+def _read_new_log_lines(offset: int) -> tuple[list[str], int, bool]:
+    """Read log lines appended since byte `offset`.
+
+    Returns (lines, new_offset, reset). `reset` is True when the file shrank
+    (rotation or the truncate endpoint) — the offset restarted at 0 and the
+    UI should mark the discontinuity.
+    """
+    try:
+        size = LOG_PATH.stat().st_size
+    except OSError:
+        return [], 0, False
+    reset = size < offset
+    if reset:
+        offset = 0
+    if size <= offset:
+        return [], offset, reset
+    try:
+        with LOG_PATH.open("r", encoding="utf-8", errors="replace") as f:
+            f.seek(offset)
+            chunk = f.read(size - offset)
+            new_offset = f.tell()
+    except OSError as exc:
+        logger.debug("log stream read failed: %s", exc)
+        return [], offset, reset
+    lines = [ln for ln in chunk.splitlines() if ln]
+    return lines, new_offset, reset
+
+
+@router.get("/api/admin/logs/stream")
+async def stream_logs(request: Request):
+    """SSE tail of the local log file — pushes new lines as they are written.
+
+    When the file shrinks (rotation or the truncate endpoint) a `reset`
+    event is emitted so the UI can note the discontinuity instead of
+    replaying garbage.
+    """
+    await require_client_admin(request)
+
+    async def event_generator():
+        offset = 0
+        try:
+            offset = LOG_PATH.stat().st_size
+        except OSError:
+            pass
+        while True:
+            if await request.is_disconnected():
+                break
+            lines, offset, reset = _read_new_log_lines(offset)
+            if reset:
+                yield {
+                    "event": "reset",
+                    "data": json.dumps({"reason": "rotated_or_truncated"}),
+                }
+            if lines:
+                yield {"event": "log", "data": json.dumps({"lines": lines})}
+            await asyncio.sleep(1)
+
+    return EventSourceResponse(event_generator())

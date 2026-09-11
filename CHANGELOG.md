@@ -5,7 +5,43 @@ All notable changes to GGEO Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.4.2] — 2026-09-12
+
+### Ditambahkan
+
+- **Live log viewer** di admin panel: tab Logs baru dengan stream SSE
+  (`/api/admin/logs/stream`), auto-follow yang berhenti saat user scroll ke
+  atas, deteksi rotasi/truncate (event `reset`), clear log file, dan cap
+  5000 baris di DOM. Backend stream men-track byte offset dan reset saat
+  file mengecil.
+- **GPS drift opsional** (`GPS_DRIFT_METERS`, default 0 = off): random walk
+  mean-reverting di sekitar koordinat anchor setiap tick keepalive. Stream
+  koordinat yang konstan sempurna mudah dideteksi sebagai spoofing; drift
+  beberapa meter terlihat natural. Hard-clamp di dalam radius, aman di
+  kutub (cos(lat) → 0 tidak meledakkan dlon).
+- **CI gate**: `ci.yml` baru (pytest matrix py3.11/3.12/3.13 + node --check
+  + ESLint di setiap PR/push) dan job `test` di `release-dist.yml` — push
+  rusak tidak bisa lagi lolos ke dist repo yang di-auto-update semua client.
+- **ESLint flat config** dengan rule safety konservatif (no-dupe-keys,
+  no-redeclare, valid-typeof, dll). Langsung menemukan 11 duplicate key di
+  `i18n.js` — diperbaiki dengan mempertahankan nilai efektif runtime
+  (diverifikasi identik via diff dictionary).
+- **Dependabot** untuk pip + github-actions (weekly).
+- Map CARTO kini ter-autentikasi: key di `js/config.js` baru (shared),
+  dipakai 4 tile layer (map utama, admin locations, admin modal, login).
+- Opsi `host` di `client.json` (atau env `HOST`) untuk bind address;
+  default 0.0.0.0 dipertahankan tapi kini di-warning di log karena UI
+  bisa diakses siapapun di LAN.
+
+### Diperbaiki / Hardening
+
+- `CLIENT_VERSION` tidak lagi hardcoded — selalu membaca file `VERSION`,
+  jadi heartbeat tidak bisa melaporkan build yang salah setelah rilis.
+- **Kepemilikan & permission data/**: `harden_data_dir()` dipanggil saat
+  boot — chown tree data/ ke `SUDO_USER` (file buatan root saat sudo run
+  sebelumnya membuat run non-root berikutnya gagal diam-diam), `data/`
+  jadi 700, `client.json` + `.session_secret` jadi 600 (keduanya memuat
+  kredensial).
 
 ### Dependency update (audit 2026-09-12)
 

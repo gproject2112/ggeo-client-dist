@@ -4,21 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GGEO Admin</title>
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico?v=155">
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png?v=155">
-    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png?v=155">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico?v=157">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png?v=157">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png?v=157">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <link rel="stylesheet" href="/static/css/style.css?v=155">
-    <script src="/static/js/i18n.js?v=156"></script>
-    <script src="/static/js/version-badge.js?v=156"></script>
-    <script src="/static/js/config.js?v=156"></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=157">
+    <script src="/static/js/i18n.js?v=157"></script>
+    <script src="/static/js/version-badge.js?v=157"></script>
+    <script src="/static/js/config.js?v=157"></script>
 </head>
 <body>
     <div class="admin">
         <header class="admin-head">
             <span class="logo">
-                <img src="/static/logo.png?v=155" alt="GGEO" class="logo-img">
+                <img src="/static/logo.png?v=157" alt="GGEO" class="logo-img">
                 <span class="logo-text">ggeo</span>
             </span>
             <span class="node" id="nodeName">…</span>
@@ -107,6 +107,10 @@
                 <div class="rail-item" data-tab="activity" onclick="Admin.switchTab('activity')">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="3 12 7 12 10 4 14 20 17 12 21 12"/></svg>
                     <span data-i18n="tab_activity">Activity</span>
+                </div>
+                <div class="rail-item" data-tab="logs" onclick="Admin.switchTab('logs')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span data-i18n="tab_logs">Logs</span>
                 </div>
                 <div class="spacer" style="flex:1"></div>
                 <div class="health" id="systemHealth">
@@ -360,6 +364,27 @@
                         <div id="login-history-pager" class="history-pager" hidden></div>
                     </div>
                 </div>
+                <div class="tab-panel" data-panel="logs">
+                    <div class="tab-head">
+                        <div>
+                            <h1 data-i18n="tab_logs">Logs</h1>
+                            <div class="sub" data-i18n="logs_sub">Runtime log stream of this client.</div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <button class="filter-pill" id="logFollowBtn" onclick="Admin.Logs.toggleFollow()">
+                                <span class="dot off" id="logFollowDot"></span>
+                                <span data-i18n="follow_live">Live</span>
+                            </button>
+                            <button class="filter-pill" onclick="Admin.Logs.load()">
+                                <span data-i18n="refresh">Refresh</span>
+                            </button>
+                            <button class="filter-pill ico-btn danger-text" onclick="Admin.Logs.clear()" data-i18n-title="clear_log" title="Clear log file">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16"/><path d="M6 7v13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <pre class="log-view" id="logView" aria-live="off"></pre>
+                </div>
             </main>
         </div>
         <footer class="app-foot">
@@ -388,6 +413,10 @@
                 <button data-mob-tab="activity" onclick="Admin.switchTab('activity')">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 12 7 12 10 4 14 20 17 12 21 12"/></svg>
                     <span data-i18n="tab_activity">Activity</span>
+                </button>
+                <button data-mob-tab="logs" onclick="Admin.switchTab('logs')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span data-i18n="tab_logs">Logs</span>
                 </button>
             </div>
         </div>
@@ -428,8 +457,8 @@
 
     <div class="toast-container" id="toast-container" role="status" aria-live="polite"></div>
 
-    <script src="/static/js/app.js?v=156"></script>
-    <script src="/static/js/admin.js?v=156"></script>
+    <script src="/static/js/app.js?v=157"></script>
+    <script src="/static/js/admin.js?v=157"></script>
     <script>
         I18N.init();
 

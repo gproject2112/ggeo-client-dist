@@ -81,10 +81,18 @@ var Admin = {
             clearInterval(Admin.Sessions.pollInterval);
             Admin.Sessions.pollInterval = null;
         }
+        if (tabName !== "logs" && Admin.Logs && Admin.Logs._follow) {
+            Admin.Logs.stopFollow();
+        }
 
         if (tabName === "users") Admin.Users.load();
         else if (tabName === "devices") Admin.Devices.load();
         else if (tabName === "locations") Admin.Locations.load();
+        else if (tabName === "logs") {
+            Admin.Logs.bindScroll();
+            Admin.Logs.load();
+            Admin.Logs.startFollow();
+        }
         else if (tabName === "activity") {
             Admin.History.switchSub("active");
             Admin.History.populateFilters();
@@ -2593,7 +2601,110 @@ Admin.History = {
 };
 // ── Logs viewer ────────────────────────────
 
-Admin.Logs = { load: function(){}, clear: function(){} };
+Admin.Logs = {
+    _es: null,          // EventSource while live-follow is on
+    _follow: false,
+    _userPinnedUp: false,
+
+    _view: function() { return document.getElementById("logView"); },
+
+    load: async function() {
+        var view = Admin.Logs._view();
+        if (!view) return;
+        try {
+            var res = await fetch("/api/admin/logs?tail=500");
+            var data = await res.json();
+            var lines = (data.data && data.data.lines) || [];
+            view.textContent = lines.length
+                ? lines.join("\n")
+                : Admin._t("log_empty", "Log is empty.");
+            if (!Admin.Logs._userPinnedUp) {
+                view.scrollTop = view.scrollHeight;
+            }
+        } catch (e) {
+            App.toast(e.message || String(e), true);
+        }
+    },
+
+    toggleFollow: function() {
+        if (Admin.Logs._follow) Admin.Logs.stopFollow();
+        else Admin.Logs.startFollow();
+    },
+
+    startFollow: function() {
+        if (Admin.Logs._es) return;
+        Admin.Logs._follow = true;
+        Admin.Logs._updateFollowBtn();
+        var es = new EventSource("/api/admin/logs/stream");
+        Admin.Logs._es = es;
+        es.addEventListener("log", function(ev) {
+            var view = Admin.Logs._view();
+            if (!view) return;
+            try {
+                var payload = JSON.parse(ev.data);
+                var lines = payload.lines || [];
+                if (!lines.length) return;
+                if (view.textContent === Admin._t("log_empty", "Log is empty.")) {
+                    view.textContent = "";
+                }
+                var atBottom = !Admin.Logs._userPinnedUp;
+                view.textContent += (view.textContent ? "\n" : "") + lines.join("\n");
+                // cap the DOM at ~5000 lines so a long session stays light
+                var split = view.textContent.split("\n");
+                if (split.length > 5000) {
+                    view.textContent = split.slice(split.length - 5000).join("\n");
+                }
+                if (atBottom) view.scrollTop = view.scrollHeight;
+            } catch (e) { /* ignore malformed event */ }
+        });
+        es.addEventListener("reset", function() {
+            var view = Admin.Logs._view();
+            if (!view) return;
+            view.textContent += "\n" + Admin._t("log_stream_reset", "— log rotated or cleared —");
+        });
+    },
+
+    stopFollow: function() {
+        Admin.Logs._follow = false;
+        if (Admin.Logs._es) {
+            Admin.Logs._es.close();
+            Admin.Logs._es = null;
+        }
+        Admin.Logs._updateFollowBtn();
+    },
+
+    _updateFollowBtn: function() {
+        var dot = document.getElementById("logFollowDot");
+        var btn = document.getElementById("logFollowBtn");
+        if (dot) dot.className = "dot " + (Admin.Logs._follow ? "on" : "off");
+        if (btn) btn.classList.toggle("active", Admin.Logs._follow);
+    },
+
+    clear: async function() {
+        if (!confirm(Admin._t("confirm_clear_log", "Clear the entire log file?"))) return;
+        try {
+            var res = await fetch("/api/admin/logs", {method: "DELETE"});
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            var view = Admin.Logs._view();
+            if (view && !Admin.Logs._follow) {
+                view.textContent = Admin._t("log_empty", "Log is empty.");
+            }
+            App.toast(Admin._t("log_cleared", "Log file cleared"));
+        } catch (e) {
+            App.toast(e.message || String(e), true);
+        }
+    },
+
+    bindScroll: function() {
+        var view = Admin.Logs._view();
+        if (!view || view._logsBound) return;
+        view._logsBound = true;
+        view.addEventListener("scroll", function() {
+            var nearBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 30;
+            Admin.Logs._userPinnedUp = !nearBottom;
+        });
+    },
+};
 
 Admin.System = { load: function(){} };
 
