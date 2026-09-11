@@ -7,5 +7,5 @@ var GGEO_CARTO_API_KEY = "cb1_3hks_1_c3928bc6ebf7e83d270afd3b";
 
 function ggeoCartoTiles(style) {
     return "https://{s}.basemaps.cartocdn.com/" + (style || "dark_all")
-        + "/{z}/{x}/{y}{r}.png?api_key=" + GGEO_CARTO_API_KEY;
+        + "/{z}/{x}/{y}{r}.png?key=" + GGEO_CARTO_API_KEY;
 }
