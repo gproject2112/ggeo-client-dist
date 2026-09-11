@@ -1418,7 +1418,7 @@ Admin.Locations = {
                 }).setView([-2.5, 118], 4);
                 L.control.zoom({position: "topright"}).addTo(Admin.Locations._mapInstance);
                 L.tileLayer(
-                    "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+                    ggeoCartoTiles("dark_all"),
                     {maxZoom: 18, attribution: '&copy; OSM &copy; CARTO'}
                 ).addTo(Admin.Locations._mapInstance);
             } else {
@@ -1538,7 +1538,7 @@ Admin.Locations = {
             attributionControl: false,
         }).setView([lat, lon], zoom);
         L.tileLayer(
-            "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+            ggeoCartoTiles("dark_all"),
             {maxZoom: 18}
         ).addTo(Admin.Locations._modalMap);
         var pinIcon = L.divIcon({
