@@ -6,7 +6,7 @@ import sys
 import time
 
 from pymobiledevice3.lockdown import create_using_usbmux
-from pymobiledevice3.services.mobile_image_mounter import auto_mount
+from pymobiledevice3.services.mobile_image_mounter import auto_mount, fetch_personalized_ddi
 from pymobiledevice3.exceptions import (
     AlreadyMountedError,
     ConnectionFailedToUsbmuxdError,
@@ -20,7 +20,7 @@ from pymobiledevice3.remote.remote_service_discovery import RemoteServiceDiscove
 
 from ggeo.config import (
     FAST_RETRY_COUNT, FAST_RETRY_DELAY, MAX_BACKOFF, AUTO_MOUNT_TIMEOUT,
-    MAX_DISCONNECT_TIME,
+    DDI_FETCH_TIMEOUT, MAX_DISCONNECT_TIME,
 )
 from ggeo.device.location import run_location_simulation
 
@@ -43,6 +43,10 @@ USBMUXD_RESTART_COOLDOWN = 60.0
 LOCKDOWN_CONNECT_TIMEOUT = 30
 
 _usbmuxd_last_restart: float = 0.0
+
+# One shared DDI download per process — two threads writing the same Image.dmg
+# would corrupt it, and every device session wants the same file.
+_ddi_prefetch: "asyncio.Task | None" = None
 
 
 async def run_device_session(session):
@@ -220,7 +224,7 @@ async def _ensure_ddi_mounted(session, lockdown, t0):
     session.status = "connecting: mount"
     logger.info("[%s] Auto-mounting developer image...", session.name)
     try:
-        await asyncio.wait_for(auto_mount(lockdown), timeout=AUTO_MOUNT_TIMEOUT)
+        await auto_mount_offloop(lockdown, session.name)
         logger.info("[%s] Developer image mounted (%.1fs)", session.name, time.monotonic() - t0)
         session._mount_done = True
     except AlreadyMountedError:
@@ -229,6 +233,52 @@ async def _ensure_ddi_mounted(session, lockdown, t0):
     except asyncio.TimeoutError:
         logger.warning("[%s] auto_mount timeout — will retry on next reconnect.",
                        session.name)
+    except Exception as e:  # noqa: BLE001
+        # Mounting is never fatal: the image may already be on the device, and
+        # a retry costs one reconnect. Narrow handling used to let DDI download
+        # failures (GitHub rate limit, HTTP errors — the latter are OSError
+        # subclasses) escape into the reconnect loop or the fatal handler,
+        # which killed the session outright.
+        logger.warning("[%s] auto_mount failed (%s: %s) — will retry on next "
+                       "reconnect.", session.name, type(e).__name__, e)
+
+
+async def auto_mount_offloop(lockdown, label: str) -> None:
+    """`auto_mount()` with the blocking DDI download moved off the event loop.
+
+    Use this instead of pymobiledevice3's `auto_mount` everywhere.
+    `fetch_personalized_ddi()` is synchronous and downloads ~16MB, yet
+    `auto_mount()` calls it from inside a coroutine. On a cold cache that
+    blocking download freezes the whole event loop — web UI, host heartbeat
+    and every other device session — and `AUTO_MOUNT_TIMEOUT` cannot cut it
+    short, because a blocking call offers no await point to cancel at.
+    Warming the cache in a thread first leaves `auto_mount()` with a cache hit
+    and a timeout that means something. pmd3 bumps `LATEST_DDI_BUILD_ID` on
+    upgrades, so this refires once per pmd3 release, not once per install.
+    """
+    await _prefetch_personalized_ddi(lockdown, label)
+    await asyncio.wait_for(auto_mount(lockdown), timeout=AUTO_MOUNT_TIMEOUT)
+
+
+async def _prefetch_personalized_ddi(lockdown, label: str) -> None:
+    global _ddi_prefetch
+    try:
+        major = int(str(lockdown.product_version).split(".")[0])
+    except (AttributeError, TypeError, ValueError):
+        return              # version unreadable: skip the optimisation, let
+                            # auto_mount decide. Warming is best-effort only.
+    if major < 17:
+        return              # <17 mounts Xcode's local DDI — nothing to download
+
+    task = _ddi_prefetch
+    if task is None or (task.done() and task.exception() is not None):
+        task = _ddi_prefetch = asyncio.create_task(
+            asyncio.to_thread(fetch_personalized_ddi))
+        logger.info("[%s] Fetching developer disk image (one-time, ~16MB)...",
+                    label)
+    # shield: one caller giving up must not cancel the download the others
+    # are waiting on. The thread runs on and warms the cache for next time.
+    await asyncio.wait_for(asyncio.shield(task), timeout=DDI_FETCH_TIMEOUT)
 
 
 async def _run_usb_tunnel(lockdown, session):

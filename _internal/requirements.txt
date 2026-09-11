@@ -1,33 +1,38 @@
 # GGEO client runtime dependencies
 # Install with: pip install -r requirements.txt
+# Floors = versions tested on 2026-08-10; auto-update pip-installs this file
+# on every client start, so raising a floor here upgrades every install.
 
 # Web framework (local UI)
-fastapi>=0.115.0
-uvicorn>=0.32.0
-sse-starlette>=2.1.0
+fastapi>=0.141.1
+uvicorn>=0.52.1
+sse-starlette>=3.4.8
 
-# iOS device control (GPS engine) — pinned because 9.10.x introduced
-# a tunnel regression on iOS 26.
-pymobiledevice3==9.9.1
+# iOS device control (GPS engine) — exact pin because auto-update ships this
+# to every install unattended. 9.9.1→10.7.2 audited: all APIs we import are
+# unchanged; the "9.10.x iOS 26 tunnel regression" behind the old pin does
+# not exist upstream (9.9.1→9.10.1 touched only syslog CLI + restore).
+# Hardware-test the iOS 26 tunnel before bumping this again.
+pymobiledevice3==10.7.2
 
-# Host API client
-httpx>=0.27
+# Host API client (<1: httpx 1.0 will be a breaking release)
+httpx>=0.27,<1
 
-# Authentication (still used locally for session cookie signing)
-bcrypt>=4.2.0
+# Session cookie signing
 itsdangerous>=2.1.0
 
-# mDNS (ggeo.local)
-zeroconf>=0.136.0
+# mDNS (ggeo.local) — >=0.149.16 fixes CVE-2026-48487 (mDNS cache poisoning)
+zeroconf>=0.149.16
 
 # System tray app
 pystray>=0.19.5
 pillow>=10.0.0
 
 # Windows-only: WinTUN kernel driver for pymobiledevice3 iOS 17.4+ tunnel.
-# Skipped on macOS / Linux via platform marker.
+# pymd3 10.x declares pytun-pmd3 itself; kept belt-and-braces until the
+# Windows tunnel path is re-verified without it. Skipped on macOS/Linux.
 pywintunx-pmd3>=1.0.2; sys_platform == "win32"
 
 # Windows-only: shell APIs (IShellLink for desktop shortcut, etc.)
-pywin32>=306; sys_platform == "win32"
-
+# >=308 skips build 307's broken post-install script.
+pywin32>=308; sys_platform == "win32"

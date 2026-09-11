@@ -9,9 +9,8 @@ from fastapi.responses import FileResponse
 
 from pymobiledevice3.exceptions import AlreadyMountedError
 from pymobiledevice3.lockdown import create_using_usbmux
-from pymobiledevice3.services.mobile_image_mounter import auto_mount
-
-from ggeo.config import AUTO_MOUNT_TIMEOUT, LOG_FILE
+from ggeo.config import LOG_FILE
+from ggeo.device.tunnel import auto_mount_offloop
 from ggeo.session import require_client_admin, require_user
 
 router = APIRouter(tags=["admin"])
@@ -161,7 +160,7 @@ async def register_device(request: Request):
             model = info.get("ProductType", model)
             ios_version = info.get("ProductVersion", ios_version)
             try:
-                await asyncio.wait_for(auto_mount(lockdown), timeout=AUTO_MOUNT_TIMEOUT)
+                await auto_mount_offloop(lockdown, udid[:12])
                 logger.info("auto_mount OK for %s", udid[:12])
             except AlreadyMountedError:
                 logger.info("auto_mount already mounted for %s", udid[:12])

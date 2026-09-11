@@ -5,6 +5,93 @@ All notable changes to GGEO Client will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Dependency update (audit 2026-08-10)
+
+- `pymobiledevice3` 9.9.1 → **10.7.2**. Audit GitHub upstream membuktikan
+  "regresi tunnel iOS 26 di 9.10.x" yang jadi alasan pin lama TIDAK ada:
+  diff 9.9.1→9.10.1 hanya menyentuh syslog CLI + restore, nol kode
+  tunnel/RSD. Semua API yang kita pakai (lockdown, usbmux, auto_mount,
+  CoreDeviceTunnelProxy, RemoteServiceDiscoveryService, LocationSimulation,
+  DvtProvider, exceptions) diverifikasi identik di 10.7.2; breaking change
+  10.x hanya di CLI. Bonus dalam rentang ini: perbaikan `auto_mount`
+  AlreadyMountedError untuk iOS 27 (10.2.3), fix hang teardown userspace
+  tunnel (9.33.4). **WAJIB hardware-test tunnel iOS 26 sebelum rilis dist**
+  — auto-update mendorong ini ke semua install.
+- `fastapi` ≥0.141.1, `uvicorn` ≥0.52.1, `sse-starlette` ≥3.4.8 — tanpa
+  breaking change; floor dinaikkan supaya auto-update ikut meng-upgrade
+  install lama.
+- `zeroconf` floor ≥0.149.16 — patch CVE-2026-48487 (mDNS cache poisoning).
+- `httpx` diberi cap `<1` — httpx 1.0 akan breaking, jangan sampai
+  auto-update menariknya tanpa sengaja.
+- `bcrypt` DIHAPUS — tidak di-import satu file pun (signing session pakai
+  `itsdangerous`); komentar lama di requirements menyesatkan.
+- `pywin32` floor ≥308 (build 307 punya post-install script rusak).
+- **Ukuran install Windows/Linux naik ~28MB**: pmd3 10.x menarik `av`
+  (PyAV) sebagai dependency non-Darwin. Wheel `cp311-abi3` tersedia untuk
+  win_amd64 + win_arm64, jadi py311/312/313 tidak perlu compile. macOS
+  tidak terdampak (`platform_system != "Darwin"`). Dependency baru lain:
+  `pmd-pytcp`, `questionary`, `pyiosbackup`, `typing_extensions`.
+- Hierarki exception pmd3 diverifikasi ulang: `ConnectionFailedToUsbmuxdError`
+  tetap turunan `MuxException`, jadi `RECOVERABLE_ERRORS` di `tunnel.py`
+  masih menangkapnya (base class yang berubah diam-diam bisa membelokkan
+  error ke handler yang salah).
+
+### Auto-update: install dependency yang gagal tidak lagi permanen
+
+Bug lama yang di-*amplify* bump ini — `requirements.txt` yang berubah
+memicu pip install di SEMUA client, dan kegagalannya dulu menempel selamanya.
+
+- `auto_update._ensure_deps()` baru: bandingkan hash `requirements.txt`
+  dengan stamp `data/.deps-installed` yang HANYA ditulis saat pip sukses.
+  Sebelumnya hash dibandingkan sebelum/sesudah `git reset --hard`, pip
+  jalan sekali dengan `check=False`, dan hasilnya ditelan — kalau gagal
+  atau timeout, start berikutnya sudah up-to-date, `return` lebih awal,
+  dan pip TIDAK PERNAH diulang. Client tinggal dengan dependency separuh
+  jadi secara permanen.
+- Jalur "already up-to-date" kini ikut memanggil `_ensure_deps()`, jadi
+  install yang gagal diperbaiki tanpa menunggu commit baru.
+- Stamp yang tidak bisa ditulis sengaja TIDAK memicu re-exec (kombinasi
+  itu = restart loop tak berujung); konsekuensinya pip jalan tiap start,
+  beberapa detik saat semua sudah terpasang.
+- Re-exec Windows tidak lagi memutus rantai tunggu launcher. `os.execv` di
+  Windows itu CreateProcess + bunuh diri, bukan tukar image — pid berubah
+  dan pemanggil keluar dengan kode 0. `scripts/menu.py` menjalankan server
+  lewat `subprocess.call` yang blocking, jadi ia mencetak "Server stopped"
+  padahal server masih booting, dan Start Server berikutnya kena "port 8484
+  already in use". `_reexec()` kini memakai `subprocess.call` di Windows
+  dan keluar dengan exit code anak. Ini juga menutup bug lama di jalur
+  pull (`n > 0`), bukan cuma jalur baru.
+
+### Perbaikan regresi yang dibawa pmd3 10.x
+
+- **Download DDI tidak lagi membekukan event loop.** pmd3 10.7.2 menaikkan
+  `LATEST_DDI_BUILD_ID` dari `17E5179g` ke `27A5228h`, jadi cache DDI SEMUA
+  install jadi basi dan mount pertama setelah update memicu unduhan ~16MB.
+  Masalahnya `fetch_personalized_ddi()` itu sinkron tapi dipanggil dari
+  dalam coroutine `auto_mount()` — unduhan itu membekukan seluruh event
+  loop (UI web, heartbeat host, semua sesi device lain), dan
+  `AUTO_MOUNT_TIMEOUT` tidak bisa memotongnya karena panggilan blocking
+  tidak menyediakan titik await untuk dibatalkan. `auto_mount_offloop()`
+  baru menghangatkan cache lewat `asyncio.to_thread` dulu, jadi
+  `auto_mount()` tinggal kena cache hit dan timeout-nya kembali berarti.
+  Unduhan dibagi satu task untuk seluruh proses — dua thread menulis
+  `Image.dmg` yang sama akan merusaknya.
+- **Kegagalan mount tidak lagi mematikan sesi.** `_ensure_ddi_mounted`
+  dulu hanya menangkap `AlreadyMountedError` dan `asyncio.TimeoutError`.
+  Kegagalan unduh DDI yang baru terjangkau itu melempar keluarga lain:
+  error `requests` adalah turunan `OSError` sehingga disalahartikan
+  sebagai koneksi putus, sisanya (rate limit GitHub, dll.) jatuh ke
+  handler fatal yang menghentikan sesi permanen. Sekarang semua kegagalan
+  mount diperlakukan sama — retry di reconnect berikutnya.
+- `ggeo/routes/admin.py` ikut dialihkan ke `auto_mount_offloop`; jalur
+  registrasi device punya masalah blocking yang sama.
+- 45 unit test lolos (12 baru); import smoke-test semua simbol
+  pymobiledevice3 yang dipakai lolos di 10.7.2. Perubahan ini lolos review
+  adversarial 3 sudut (19 agent): 3 temuan terkonfirmasi — ketiganya sudah
+  diperbaiki di atas — dan 12 temuan lain gugur saat diverifikasi.
+
 ## [2.4.1] — 2026-07-07
 
 Perbaikan dua masalah produksi. (1) Install Windows gagal total dengan
