@@ -5,15 +5,19 @@
 
 # Web framework (local UI)
 fastapi>=0.141.1
-uvicorn>=0.52.1
-sse-starlette>=3.4.8
+uvicorn>=0.52.4
+sse-starlette>=3.4.11
 
 # iOS device control (GPS engine) — exact pin because auto-update ships this
-# to every install unattended. 9.9.1→10.7.2 audited: all APIs we import are
-# unchanged; the "9.10.x iOS 26 tunnel regression" behind the old pin does
-# not exist upstream (9.9.1→9.10.1 touched only syslog CLI + restore).
+# to every install unattended. 10.7.2→11.12.4 audited: diffs in the modules we
+# import are all additive/backward-compatible (auxiliary_metadata kwargs,
+# DeviceNotFoundError message, mounter legacy-hangup fix). v11.0.0's breaking
+# change (PYMOBILEDEVICE3_PREFER_TUNNELD removed) does not affect us — grep
+# confirms we never set it. 11.x also floors pmd-pytcp>=0.3.7, whose stability
+# audit fixes userspace-tunnel wedge modes (NUD FAILED black-hole, dead
+# recv() waiters) relevant to the Windows tunnel path.
 # Hardware-test the iOS 26 tunnel before bumping this again.
-pymobiledevice3==10.7.2
+pymobiledevice3==11.12.4
 
 # Host API client (<1: httpx 1.0 will be a breaking release)
 httpx>=0.27,<1
@@ -22,7 +26,7 @@ httpx>=0.27,<1
 itsdangerous>=2.1.0
 
 # mDNS (ggeo.local) — >=0.149.16 fixes CVE-2026-48487 (mDNS cache poisoning)
-zeroconf>=0.149.16
+zeroconf>=0.151.3
 
 # System tray app
 pystray>=0.19.5
@@ -35,4 +39,4 @@ pywintunx-pmd3>=1.0.2; sys_platform == "win32"
 
 # Windows-only: shell APIs (IShellLink for desktop shortcut, etc.)
 # >=308 skips build 307's broken post-install script.
-pywin32>=308; sys_platform == "win32"
+pywin32>=312; sys_platform == "win32"

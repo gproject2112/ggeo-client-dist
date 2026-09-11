@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Dependency update (audit 2026-09-12)
+
+- `pymobiledevice3` 10.7.2 → **11.12.4**. Diff code-level 10.7.2→11.12.4 di
+  file yang kita import diverifikasi additive/backward-compatible:
+  `RemoteServiceDiscoveryService.__init__` dan `TunnelResult` hanya menambah
+  kwarg/field `auxiliary_metadata` opsional, `DeviceNotFoundError` kini
+  membawa message (justru memperbaiki `str(exc)` kosong), mounter menambah
+  fix hangup `mobile_storage_proxy` legacy, `usbmux` menghapus satu
+  `setblocking` internal. Breaking change v11.0.0 (env var
+  `PYMOBILEDEVICE3_PREFER_TUNNELD` dihapus) tidak menyentuh kita — grep
+  memastikan tidak pernah dipakai. Bonus relevan Windows: floor
+  `pmd-pytcp>=0.3.7` membawa stability-audit tunnel userspace (fix black-hole
+  NUD FAILED saat device tidur ~3 detik, waiter `recv()` yang mati,
+  datapath loop yang diam-diam berhenti). Hierarki exception
+  (`ConnectionFailedToUsbmuxdError ⊂ MuxException`) diverifikasi ulang di
+  11.12.4. Import smoke-test semua simbol + 45 unit test lolos.
+  **WAJIB hardware-test tunnel iOS 26 (USB + WiFi) sebelum rilis dist.**
+- Dependency baru pmd3 11.x di Windows/Linux: `asgiwebdav`,
+  `backports.zstd`, `chardet` — semuanya punya wheel win_amd64/universal
+  (av 18.1.0 tetap `cp311-abi3`, jadi py311-313 tidak compile).
+- Floor dinaikkan mengikuti rilis terbaru: `uvicorn` ≥0.52.4,
+  `sse-starlette` ≥3.4.11, `zeroconf` ≥0.151.3, `pywin32` ≥312 (Windows).
+
 ### Dependency update (audit 2026-08-10)
 
 - `pymobiledevice3` 9.9.1 → **10.7.2**. Audit GitHub upstream membuktikan
